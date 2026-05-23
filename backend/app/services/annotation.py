@@ -5,7 +5,7 @@ from dataclasses import dataclass
 class MockAnnotation:
     caption: str
     tags: list[str]
-    objects: list[dict]
+    objects: list[dict[str, object]]
     model_used: str
 
 

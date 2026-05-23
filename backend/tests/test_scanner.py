@@ -20,3 +20,16 @@ def test_find_image_files_returns_supported_images(tmp_path: Path):
 
 def test_find_image_files_skips_missing_folder(tmp_path: Path):
     assert find_image_files([tmp_path / "missing"]) == []
+
+
+def test_find_image_files_deduplicates_repeated_folders(tmp_path: Path):
+    image = tmp_path / "cat.JPG"
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    nested_image = nested / "dog.png"
+    image.write_bytes(b"fake")
+    nested_image.write_bytes(b"fake")
+
+    result = find_image_files([tmp_path, tmp_path, nested, nested])
+
+    assert result == [image, nested_image]
