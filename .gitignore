@@ -10,3 +10,4 @@ data/
 *.sqlite
 .claude/
 .worktrees/
+*.tsbuildinfo
