@@ -68,7 +68,7 @@
 - 创建：`.gitignore`
 - 创建：`.env.example`
 
-- [ ] **步骤 1：编写失败的配置测试**
+- [x] **步骤 1：编写失败的配置测试**
 
 创建 `backend/tests/test_config.py`：
 
@@ -91,7 +91,7 @@ def test_settings_parses_watch_folders(tmp_path: Path):
     assert settings.db_path == tmp_path / "picmind.db"
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 运行：
 
@@ -101,7 +101,7 @@ cd backend && uv run pytest tests/test_config.py -v
 
 预期：FAIL，报错包含 `ModuleNotFoundError: No module named 'app.config'` 或 `No module named 'app'`。
 
-- [ ] **步骤 3：创建后端依赖配置**
+- [x] **步骤 3：创建后端依赖配置**
 
 创建 `backend/pyproject.toml`：
 
@@ -131,7 +131,7 @@ pythonpath = ["."]
 testpaths = ["tests"]
 ```
 
-- [ ] **步骤 4：实现配置对象**
+- [x] **步骤 4：实现配置对象**
 
 创建 `backend/app/__init__.py`：
 
@@ -189,7 +189,7 @@ WATCH_FOLDERS=/absolute/path/to/photos,/absolute/path/to/screenshots
 DB_PATH=./data/picmind.db
 ```
 
-- [ ] **步骤 5：运行测试验证通过**
+- [x] **步骤 5：运行测试验证通过**
 
 运行：
 
@@ -199,7 +199,7 @@ cd backend && uv run pytest tests/test_config.py -v
 
 预期：PASS，`1 passed`。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add .gitignore .env.example backend/pyproject.toml backend/app/__init__.py backend/app/config.py backend/tests/test_config.py
@@ -215,7 +215,7 @@ git commit -m "chore: initialize backend configuration"
 - 创建：`backend/app/models.py`
 - 创建：`backend/tests/test_database.py`
 
-- [ ] **步骤 1：编写失败的数据库测试**
+- [x] **步骤 1：编写失败的数据库测试**
 
 创建 `backend/tests/test_database.py`：
 
@@ -239,7 +239,7 @@ def test_database_models_create_expected_tables(tmp_path: Path):
     assert Annotation.__tablename__ == "annotations"
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 运行：
 
@@ -249,7 +249,7 @@ cd backend && uv run pytest tests/test_database.py -v
 
 预期：FAIL，报错包含 `ModuleNotFoundError: No module named 'app.database'`。
 
-- [ ] **步骤 3：实现数据库基础设施**
+- [x] **步骤 3：实现数据库基础设施**
 
 创建 `backend/app/database.py`：
 
@@ -290,7 +290,7 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 ```
 
-- [ ] **步骤 4：实现 ORM 模型**
+- [x] **步骤 4：实现 ORM 模型**
 
 创建 `backend/app/models.py`：
 
@@ -335,7 +335,7 @@ class Annotation(Base):
     image: Mapped[Image] = relationship(back_populates="annotation")
 ```
 
-- [ ] **步骤 5：运行测试验证通过**
+- [x] **步骤 5：运行测试验证通过**
 
 运行：
 
@@ -345,7 +345,7 @@ cd backend && uv run pytest tests/test_database.py -v
 
 预期：PASS，`1 passed`。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add backend/app/database.py backend/app/models.py backend/tests/test_database.py
@@ -363,7 +363,7 @@ git commit -m "feat: add image metadata database models"
 - 创建：`backend/tests/test_scanner.py`
 - 创建：`backend/tests/test_annotation.py`
 
-- [ ] **步骤 1：编写失败的扫描器测试**
+- [x] **步骤 1：编写失败的扫描器测试**
 
 创建 `backend/tests/test_scanner.py`：
 
@@ -392,7 +392,7 @@ def test_find_image_files_skips_missing_folder(tmp_path: Path):
     assert find_image_files([tmp_path / "missing"]) == []
 ```
 
-- [ ] **步骤 2：编写失败的 mock 标注测试**
+- [x] **步骤 2：编写失败的 mock 标注测试**
 
 创建 `backend/tests/test_annotation.py`：
 
@@ -409,7 +409,7 @@ def test_create_mock_annotation_returns_phase_one_values():
     assert annotation.model_used == "mock"
 ```
 
-- [ ] **步骤 3：运行测试验证失败**
+- [x] **步骤 3：运行测试验证失败**
 
 运行：
 
@@ -419,7 +419,7 @@ cd backend && uv run pytest tests/test_scanner.py tests/test_annotation.py -v
 
 预期：FAIL，报错包含 `No module named 'app.services'`。
 
-- [ ] **步骤 4：实现扫描器和 mock 标注**
+- [x] **步骤 4：实现扫描器和 mock 标注**
 
 创建 `backend/app/services/__init__.py`：
 
@@ -468,7 +468,7 @@ def create_mock_annotation() -> MockAnnotation:
     )
 ```
 
-- [ ] **步骤 5：运行测试验证通过**
+- [x] **步骤 5：运行测试验证通过**
 
 运行：
 
@@ -478,7 +478,7 @@ cd backend && uv run pytest tests/test_scanner.py tests/test_annotation.py -v
 
 预期：PASS，`4 passed`。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add backend/app/services/__init__.py backend/app/services/scanner.py backend/app/services/annotation.py backend/tests/test_scanner.py backend/tests/test_annotation.py
@@ -494,7 +494,7 @@ git commit -m "feat: add image scanning and mock annotations"
 - 创建：`backend/tests/conftest.py`
 - 创建：`backend/tests/test_indexer.py`
 
-- [ ] **步骤 1：编写失败的索引测试**
+- [x] **步骤 1：编写失败的索引测试**
 
 创建 `backend/tests/conftest.py`：
 
@@ -566,7 +566,7 @@ def test_index_folders_skips_duplicate_hash(db_session, sample_image):
     assert db_session.query(Image).count() == 1
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 运行：
 
@@ -576,7 +576,7 @@ cd backend && uv run pytest tests/test_indexer.py -v
 
 预期：FAIL，报错包含 `No module named 'app.services.indexer'`。
 
-- [ ] **步骤 3：实现索引服务**
+- [x] **步骤 3：实现索引服务**
 
 创建 `backend/app/services/indexer.py`：
 
@@ -662,7 +662,7 @@ def index_folders(folders: list[Path], db: Session) -> IndexResult:
     return IndexResult(added=added, skipped=skipped, errors=errors)
 ```
 
-- [ ] **步骤 4：运行测试验证通过**
+- [x] **步骤 4：运行测试验证通过**
 
 运行：
 
@@ -672,7 +672,7 @@ cd backend && uv run pytest tests/test_indexer.py -v
 
 预期：PASS，`2 passed`。
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add backend/app/services/indexer.py backend/tests/conftest.py backend/tests/test_indexer.py
@@ -693,7 +693,7 @@ git commit -m "feat: index local images into sqlite"
 - 创建：`backend/app/main.py`
 - 创建：`backend/tests/test_api.py`
 
-- [ ] **步骤 1：编写失败的 API 测试**
+- [x] **步骤 1：编写失败的 API 测试**
 
 创建 `backend/tests/test_api.py`：
 
@@ -764,7 +764,7 @@ def test_get_settings_returns_phase_one_provider(tmp_path: Path):
     assert response.json()["provider"] == "mock"
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 运行：
 
@@ -774,7 +774,7 @@ cd backend && uv run pytest tests/test_api.py -v
 
 预期：FAIL，报错包含 `No module named 'app.main'`。
 
-- [ ] **步骤 3：实现 schemas**
+- [x] **步骤 3：实现 schemas**
 
 创建 `backend/app/schemas.py`：
 
@@ -829,7 +829,7 @@ class ReindexResponse(BaseModel):
     errors: int
 ```
 
-- [ ] **步骤 4：实现 API 路由和应用入口**
+- [x] **步骤 4：实现 API 路由和应用入口**
 
 创建 `backend/app/api/__init__.py`：
 
@@ -1008,7 +1008,7 @@ def startup() -> None:
         db.close()
 ```
 
-- [ ] **步骤 5：运行 API 测试验证通过**
+- [x] **步骤 5：运行 API 测试验证通过**
 
 运行：
 
@@ -1018,7 +1018,7 @@ cd backend && uv run pytest tests/test_api.py -v
 
 预期：PASS，`3 passed`。
 
-- [ ] **步骤 6：运行全部后端测试**
+- [x] **步骤 6：运行全部后端测试**
 
 运行：
 
@@ -1028,7 +1028,7 @@ cd backend && uv run pytest -v
 
 预期：PASS，所有测试通过。
 
-- [ ] **步骤 7：Commit**
+- [x] **步骤 7：Commit**
 
 ```bash
 git add backend/app/schemas.py backend/app/api backend/app/main.py backend/tests/test_api.py
@@ -1050,7 +1050,7 @@ git commit -m "feat: expose image gallery api"
 - 创建：`frontend/src/index.css`
 - 创建：`frontend/src/api/client.ts`
 
-- [ ] **步骤 1：创建前端项目配置**
+- [x] **步骤 1：创建前端项目配置**
 
 创建 `frontend/package.json`：
 
@@ -1160,7 +1160,7 @@ export default {
 };
 ```
 
-- [ ] **步骤 2：创建前端入口和 API 客户端**
+- [x] **步骤 2：创建前端入口和 API 客户端**
 
 创建 `frontend/src/index.css`：
 
@@ -1260,7 +1260,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 );
 ```
 
-- [ ] **步骤 3：运行前端依赖安装**
+- [x] **步骤 3：运行前端依赖安装**
 
 运行：
 
@@ -1270,7 +1270,7 @@ cd frontend && npm install
 
 预期：生成 `package-lock.json`，命令退出码为 0。
 
-- [ ] **步骤 4：Commit**
+- [x] **步骤 4：Commit**
 
 ```bash
 git add frontend/package.json frontend/package-lock.json frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tailwind.config.js frontend/postcss.config.js frontend/src/main.tsx frontend/src/index.css frontend/src/api/client.ts
@@ -1288,7 +1288,7 @@ git commit -m "chore: initialize frontend application"
 - 创建：`frontend/src/pages/Dashboard.tsx`
 - 创建：`frontend/src/pages/Settings.tsx`
 
-- [ ] **步骤 1：实现 App 导航和页面切换**
+- [x] **步骤 1：实现 App 导航和页面切换**
 
 创建 `frontend/src/App.tsx`：
 
@@ -1340,7 +1340,7 @@ export default function App() {
 }
 ```
 
-- [ ] **步骤 2：实现 Gallery 页面**
+- [x] **步骤 2：实现 Gallery 页面**
 
 创建 `frontend/src/pages/Gallery.tsx`：
 
@@ -1397,7 +1397,7 @@ export default function Gallery({ onSelectImage }: { onSelectImage: (id: string)
 }
 ```
 
-- [ ] **步骤 3：实现详情、看板和设置页面**
+- [x] **步骤 3：实现详情、看板和设置页面**
 
 创建 `frontend/src/pages/ImageDetail.tsx`：
 
@@ -1513,7 +1513,7 @@ export default function Settings() {
 }
 ```
 
-- [ ] **步骤 4：运行前端构建验证**
+- [x] **步骤 4：运行前端构建验证**
 
 运行：
 
@@ -1523,7 +1523,7 @@ cd frontend && npm run build
 
 预期：PASS，生成 `frontend/dist`。
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add frontend/src/App.tsx frontend/src/pages
@@ -1538,7 +1538,7 @@ git commit -m "feat: add picmind gallery interface"
 - 修改：`docs/superpowers/plans/2026-05-23-picmind-phase-1.md`
 - 已创建：`docs/superpowers/specs/2026-05-23-picmind-phase-1-design.md`
 
-- [ ] **步骤 1：准备本地测试图片目录**
+- [x] **步骤 1：准备本地测试图片目录**
 
 运行：
 
@@ -1558,7 +1558,7 @@ Image.new('RGB', (80, 60), color='green').save(path)
 PY
 ```
 
-- [ ] **步骤 2：配置后端 `.env`**
+- [x] **步骤 2：配置后端 `.env`**
 
 创建 `backend/.env`：
 
@@ -1567,7 +1567,7 @@ WATCH_FOLDERS=../data/sample-photos
 DB_PATH=../data/picmind.db
 ```
 
-- [ ] **步骤 3：运行后端测试和前端构建**
+- [x] **步骤 3：运行后端测试和前端构建**
 
 运行：
 
@@ -1585,7 +1585,7 @@ cd frontend && npm run build
 
 预期：PASS，生成生产构建。
 
-- [ ] **步骤 4：启动后端和前端进行手动验证**
+- [x] **步骤 4：启动后端和前端进行手动验证**
 
 启动后端：
 
@@ -1607,12 +1607,22 @@ cd frontend && npm run dev
 - Dashboard 显示图片总数为 `1`。
 - Settings 页面点击「重新扫描」后显示新增 `0`，跳过 `1`，错误 `0`。
 
-- [ ] **步骤 5：Commit 规格和计划文档**
+- [x] **步骤 5：Commit 规格和计划文档**
 
 ```bash
 git add docs/superpowers/specs/2026-05-23-picmind-phase-1-design.md docs/superpowers/plans/2026-05-23-picmind-phase-1.md
 git commit -m "docs: add picmind phase one plan"
 ```
+
+---
+
+## Phase 1 本地验证记录
+
+- 后端测试：`cd backend && uv run pytest -v`，结果为 22 passed。
+- 前端构建：`cd frontend && npm run build`，结果为 Vite production build 成功。
+- 本地服务：后端 `http://127.0.0.1:8000` 启动成功；前端 dev server 启动成功，因 `5173` 被占用自动使用 `http://127.0.0.1:5174/`。
+- 端到端接口验证：图库返回 1 张 `sample.png`；图片文件代理返回 PNG；详情返回 mock 标注；统计返回 `total_images = 1` 和 `formats = {"PNG": 1}`；`POST /api/reindex` 返回 `added = 0`、`skipped = 1`、`errors = 0`。
+- 说明：命令行输出中的中文 caption / tags 受 Windows 控制台编码影响显示为乱码，但断言使用 Python 字符串比较通过。
 
 ---
 
