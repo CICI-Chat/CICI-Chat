@@ -3,9 +3,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import images, reindex, settings, stats
+from app.api import images, recognition, reindex, settings, stats
 from app.config import get_settings
 from app.database import SessionLocal, init_db
+from app.services.batch_recognition import BatchRecognitionService
 from app.services.indexer import index_folders
 
 
@@ -24,6 +25,7 @@ def create_lifespan(run_startup_indexing: bool):
 
 def create_app(run_startup_indexing: bool = True) -> FastAPI:
     app = FastAPI(title="PicMind", lifespan=create_lifespan(run_startup_indexing))
+    app.state.batch_recognition_service = BatchRecognitionService()
 
     app.add_middleware(
         CORSMiddleware,
@@ -37,6 +39,7 @@ def create_app(run_startup_indexing: bool = True) -> FastAPI:
     app.include_router(stats.router)
     app.include_router(settings.router)
     app.include_router(reindex.router)
+    app.include_router(recognition.router)
     return app
 
 

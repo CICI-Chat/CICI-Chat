@@ -4,12 +4,28 @@ import { api, ImageDetail as ImageDetailType } from '../api/client';
 export default function ImageDetail({ imageId, onBack }: { imageId: string; onBack: () => void }) {
   const [image, setImage] = useState<ImageDetailType | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [recognizing, setRecognizing] = useState(false);
+  const [recognitionError, setRecognitionError] = useState<string | null>(null);
 
   useEffect(() => {
     api.getImage(imageId).then(setImage).catch((err: Error) => setError(err.message));
   }, [imageId]);
 
-  if (error) return <div className="p-8 text-red-600">加载失败：{error}</div>;
+  const handleRecognize = async () => {
+    setRecognizing(true);
+    setRecognitionError(null);
+
+    try {
+      const updatedImage = await api.recognizeImage(imageId);
+      setImage(updatedImage);
+    } catch (err) {
+      setRecognitionError(err instanceof Error ? err.message : '未知错误');
+    } finally {
+      setRecognizing(false);
+    }
+  };
+
+  if (error && !image) return <div className="p-8 text-red-600">加载失败：{error}</div>;
   if (!image) return <div className="p-8">加载中……</div>;
 
   return (
@@ -18,7 +34,17 @@ export default function ImageDetail({ imageId, onBack }: { imageId: string; onBa
       <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
         <img src={image.image_url} alt={image.caption} className="w-full rounded-xl bg-white object-contain shadow-sm" />
         <aside className="rounded-xl bg-white p-5 shadow-sm">
-          <h2 className="text-xl font-semibold">图片详情</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold">图片详情</h2>
+            <button
+              onClick={handleRecognize}
+              disabled={recognizing}
+              className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {recognizing ? '识别中……' : '重新识别'}
+            </button>
+          </div>
+          {recognitionError && <p className="mt-3 text-sm text-red-600">识别失败：{recognitionError}</p>}
           <p className="mt-4 text-slate-700">{image.caption}</p>
           <div className="mt-4 flex flex-wrap gap-2">
             {image.tags.map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-3 py-1 text-sm">{tag}</span>)}

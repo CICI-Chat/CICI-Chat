@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -10,12 +11,13 @@ from app.database import Base
 from app.services.indexer import index_folders
 
 
-@pytest.fixture
-def api_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+@contextmanager
+def make_api_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     from app.config import Settings
     from app.database import get_db
     from app.main import create_app
 
+    tmp_path.mkdir(parents=True, exist_ok=True)
     test_settings = Settings(watch_folders=str(tmp_path), db_path=tmp_path / "api.db")
     monkeypatch.setattr("app.api.reindex.get_settings", lambda: test_settings)
     monkeypatch.setattr("app.api.settings.get_settings", lambda: test_settings)
@@ -47,6 +49,12 @@ def api_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     finally:
         app.dependency_overrides.clear()
         Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture
+def api_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_api_client(tmp_path, monkeypatch) as client:
+        yield client
 
 
 def test_get_images_returns_indexed_image_with_mock_annotation(api_client: TestClient):
@@ -115,3 +123,82 @@ def test_post_reindex_returns_index_result(api_client: TestClient):
     assert response.status_code == 200
     payload = response.json()
     assert set(payload) == {"added", "skipped", "errors"}
+
+
+def test_post_recognize_image_returns_refreshed_detail(api_client: TestClient):
+    image_id = api_client.get("/api/images").json()["items"][0]["id"]
+
+    response = api_client.post(f"/api/images/{image_id}/recognize")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == image_id
+    assert payload["caption"] == "待分析的本地图片"
+    assert payload["tags"] == ["本地图片", "待分析", "landscape"]
+    assert payload["objects"] == []
+    assert payload["model_used"] == "mock"
+
+
+def test_post_recognize_missing_image_returns_404(api_client: TestClient):
+    response = api_client.post("/api/images/missing/recognize")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Image not found"
+
+
+def test_post_recognition_batch_runs_and_get_returns_progress(api_client: TestClient):
+    image_id = api_client.get("/api/images").json()["items"][0]["id"]
+
+    create_response = api_client.post("/api/recognition/batches", json={"image_ids": [image_id, "missing"]})
+
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert set(created) == {"batch_id", "total", "completed", "failed", "pending", "running", "status"}
+    assert created["total"] == 2
+    assert created["completed"] == 1
+    assert created["failed"] == 1
+    assert created["pending"] == 0
+    assert created["running"] == 0
+    assert created["status"] == "failed"
+
+    get_response = api_client.get(f"/api/recognition/batches/{created['batch_id']}")
+
+    assert get_response.status_code == 200
+    assert get_response.json() == created
+
+
+def test_post_empty_recognition_batch_returns_400(api_client: TestClient):
+    response = api_client.post("/api/recognition/batches", json={"image_ids": []})
+
+    assert response.status_code == 400
+
+
+def test_post_oversized_recognition_batch_returns_422(api_client: TestClient):
+    response = api_client.post(
+        "/api/recognition/batches",
+        json={"image_ids": [f"image-{index}" for index in range(201)]},
+    )
+
+    assert response.status_code == 422
+
+
+def test_recognition_batches_are_isolated_between_app_instances(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    with make_api_client(tmp_path / "first", monkeypatch) as first_client:
+        image_id = first_client.get("/api/images").json()["items"][0]["id"]
+        create_response = first_client.post("/api/recognition/batches", json={"image_ids": [image_id]})
+        assert create_response.status_code == 201
+        batch_id = create_response.json()["batch_id"]
+
+    with make_api_client(tmp_path / "second", monkeypatch) as second_client:
+        response = second_client.get(f"/api/recognition/batches/{batch_id}")
+
+    assert response.status_code == 404
+
+
+def test_get_missing_recognition_batch_returns_404(api_client: TestClient):
+    response = api_client.get("/api/recognition/batches/missing")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Batch not found"

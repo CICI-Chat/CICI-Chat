@@ -43,6 +43,16 @@ export type ReindexResult = {
   errors: number;
 };
 
+export type RecognitionBatch = {
+  batch_id: string;
+  total: number;
+  completed: number;
+  failed: number;
+  pending: number;
+  running: number;
+  status: string;
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   if (!response.ok) {
@@ -58,6 +68,16 @@ export const api = {
     return request<ImageList>(`/api/images?${params}`);
   },
   getImage: (id: string) => request<ImageDetail>(`/api/images/${encodeURIComponent(id)}`),
+  recognizeImage: (id: string) =>
+    request<ImageDetail>(`/api/images/${encodeURIComponent(id)}/recognize`, { method: 'POST' }),
+  createRecognitionBatch: (imageIds: string[]) =>
+    request<RecognitionBatch>('/api/recognition/batches', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_ids: imageIds }),
+    }),
+  getRecognitionBatch: (batchId: string) =>
+    request<RecognitionBatch>(`/api/recognition/batches/${encodeURIComponent(batchId)}`),
   getStats: () => request<Stats>('/api/stats'),
   getSettings: () => request<Settings>('/api/settings'),
   reindex: () => request<ReindexResult>('/api/reindex', { method: 'POST' }),

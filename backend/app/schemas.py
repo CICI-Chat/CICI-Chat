@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ImageItem(BaseModel):
@@ -28,6 +28,20 @@ class ImageList(BaseModel):
 class ImageDetail(ImageItem):
     objects: list[dict[str, object]]
     model_used: str
+
+
+class RecognitionBatchCreate(BaseModel):
+    image_ids: list[str] = Field(max_length=200)
+
+
+class RecognitionBatchResponse(BaseModel):
+    batch_id: str
+    total: int
+    completed: int
+    failed: int
+    pending: int
+    running: int
+    status: str
 
 
 class StatsResponse(BaseModel):
