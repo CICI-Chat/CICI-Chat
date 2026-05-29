@@ -1,4 +1,6 @@
+import json
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -8,6 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.database import Base
+from app.models import Annotation, Image
 from app.services.indexer import index_folders
 
 
@@ -51,6 +54,123 @@ def make_api_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         Base.metadata.drop_all(bind=engine)
 
 
+def add_indexed_image(
+    db: Session,
+    tmp_path: Path,
+    *,
+    filename: str,
+    size: tuple[int, int],
+    color: str,
+    caption: str,
+    tags: list[str],
+    file_size: int,
+    format: str,
+    modified_at: datetime,
+    indexed_at: datetime,
+) -> Image:
+    image_path = tmp_path / filename
+    PillowImage.new("RGB", size, color=color).save(image_path)
+    image = Image(
+        file_path=str(image_path.resolve()),
+        file_hash=f"hash-{filename}",
+        file_size=file_size,
+        width=size[0],
+        height=size[1],
+        format=format,
+        created_at=modified_at,
+        modified_at=modified_at,
+        indexed_at=indexed_at,
+    )
+    db.add(image)
+    db.flush()
+    db.add(
+        Annotation(
+            image_id=image.id,
+            caption=caption,
+            tags=json.dumps(tags, ensure_ascii=False),
+            objects="[]",
+            model_used="mock",
+        )
+    )
+    db.commit()
+    db.refresh(image)
+    return image
+
+
+@contextmanager
+def make_gallery_query_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from app.config import Settings
+    from app.database import get_db
+    from app.main import create_app
+
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    test_settings = Settings(watch_folders=str(tmp_path), db_path=tmp_path / "gallery-query.db")
+    monkeypatch.setattr("app.api.reindex.get_settings", lambda: test_settings)
+    monkeypatch.setattr("app.api.settings.get_settings", lambda: test_settings)
+    app = create_app(run_startup_indexing=False)
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'gallery-query.db'}", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+    now = datetime(2026, 5, 29, 12, 0, tzinfo=UTC)
+    with SessionLocal() as session:
+        add_indexed_image(
+            session,
+            tmp_path,
+            filename="mountain.png",
+            size=(64, 32),
+            color="red",
+            caption="雪山日出",
+            tags=["自然", "旅行"],
+            file_size=300,
+            format="PNG",
+            modified_at=now - timedelta(days=2),
+            indexed_at=now - timedelta(minutes=3),
+        )
+        add_indexed_image(
+            session,
+            tmp_path,
+            filename="city.jpg",
+            size=(32, 64),
+            color="blue",
+            caption="城市夜景",
+            tags=["城市", "夜景"],
+            file_size=100,
+            format="JPEG",
+            modified_at=now - timedelta(days=1),
+            indexed_at=now - timedelta(minutes=2),
+        )
+        add_indexed_image(
+            session,
+            tmp_path,
+            filename="family.png",
+            size=(48, 48),
+            color="green",
+            caption="家庭相册",
+            tags=["人物", "旅行"],
+            file_size=200,
+            format="PNG",
+            modified_at=now,
+            indexed_at=now - timedelta(minutes=1),
+        )
+
+    def override_get_db():
+        db: Session = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as client:
+            yield client
+    finally:
+        app.dependency_overrides.clear()
+        Base.metadata.drop_all(bind=engine)
+
+
 @pytest.fixture
 def api_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     with make_api_client(tmp_path, monkeypatch) as client:
@@ -68,6 +188,84 @@ def test_get_images_returns_indexed_image_with_mock_annotation(api_client: TestC
     assert payload["items"][0]["caption"] == "待分析的本地图片"
     assert payload["items"][0]["tags"] == ["本地图片", "待分析"]
     assert payload["items"][0]["image_url"].startswith("/api/images/")
+
+
+def test_list_images_searches_caption(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch) as client:
+        response = client.get("/api/images", params={"q": "夜景"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["caption"] for item in payload["items"]] == ["城市夜景"]
+
+
+def test_list_images_searches_tags(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch) as client:
+        response = client.get("/api/images", params={"q": "人物"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["caption"] for item in payload["items"]] == ["家庭相册"]
+
+
+def test_list_images_searches_file_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch) as client:
+        response = client.get("/api/images", params={"q": "mountain"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["caption"] for item in payload["items"]] == ["雪山日出"]
+
+
+def test_list_images_filters_format(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch) as client:
+        response = client.get(
+            "/api/images",
+            params={"format": "PNG", "sort": "file_size", "order": "asc"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 2
+    assert [item["caption"] for item in payload["items"]] == ["家庭相册", "雪山日出"]
+
+
+def test_list_images_combines_tag_and_search(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch) as client:
+        response = client.get("/api/images", params={"tag": "旅行", "q": "家庭"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["caption"] for item in payload["items"]] == ["家庭相册"]
+
+
+def test_list_images_sorts_by_width_desc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch) as client:
+        response = client.get("/api/images", params={"sort": "width", "order": "desc"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["caption"] for item in payload["items"]] == ["雪山日出", "家庭相册", "城市夜景"]
+
+
+def test_list_images_rejects_unknown_sort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch) as client:
+        response = client.get("/api/images", params={"sort": "caption"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Unsupported sort field"
+
+
+def test_list_images_rejects_unknown_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch) as client:
+        response = client.get("/api/images", params={"order": "sideways"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Unsupported sort order"
 
 
 def test_get_stats_counts_images_formats_and_tags(api_client: TestClient):
