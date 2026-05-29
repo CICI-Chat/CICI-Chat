@@ -4,11 +4,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
-from sqlalchemy import desc
+from sqlalchemy import asc, desc, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import Image
+from app.models import Annotation, Image
 from app.schemas import ImageDetail, ImageItem, ImageList
 
 router = APIRouter(prefix="/api/images", tags=["images"])
@@ -52,25 +52,59 @@ def to_image_detail(image: Image) -> ImageDetail:
     )
 
 
+SORT_COLUMNS = {
+    "indexed_at": Image.indexed_at,
+    "modified_at": Image.modified_at,
+    "file_size": Image.file_size,
+    "width": Image.width,
+    "height": Image.height,
+}
+
+
 @router.get("", response_model=ImageList)
 def list_images(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=50, ge=1, le=200),
     tag: str | None = None,
+    q: str | None = None,
+    image_format: str | None = Query(default=None, alias="format"),
+    sort: str = "indexed_at",
+    order: str = "desc",
     db: Session = Depends(get_db),
 ) -> ImageList:
-    query = db.query(Image).options(joinedload(Image.annotation))
-    if tag is not None:
-        query = query.join(Image.annotation).filter(Image.annotation.has())
+    sort_column = SORT_COLUMNS.get(sort)
+    if sort_column is None:
+        raise HTTPException(status_code=400, detail="Unsupported sort field")
+    if order not in {"asc", "desc"}:
+        raise HTTPException(status_code=400, detail="Unsupported sort order")
 
-    images = query.order_by(desc(Image.indexed_at)).all()
-    if tag is not None:
-        images = [image for image in images if tag in parse_json_list(image.annotation.tags)]
+    query = db.query(Image).outerjoin(Annotation).options(joinedload(Image.annotation))
 
-    total = len(images)
-    start = (page - 1) * size
-    end = start + size
-    return ImageList(items=[to_image_item(image) for image in images[start:end]], total=total, page=page, size=size)
+    search_text = q.strip() if q else ""
+    if search_text:
+        search_pattern = f"%{search_text}%"
+        query = query.filter(
+            or_(
+                Image.file_path.ilike(search_pattern),
+                Annotation.caption.ilike(search_pattern),
+                Annotation.tags.ilike(search_pattern),
+            )
+        )
+
+    if tag is not None:
+        tag_text = tag.strip()
+        if tag_text:
+            query = query.filter(Annotation.tags.ilike(f'%"{tag_text}"%'))
+
+    if image_format is not None:
+        format_text = image_format.strip()
+        if format_text:
+            query = query.filter(Image.format == format_text)
+
+    total = query.count()
+    order_by = asc(sort_column) if order == "asc" else desc(sort_column)
+    images = query.order_by(order_by).offset((page - 1) * size).limit(size).all()
+    return ImageList(items=[to_image_item(image) for image in images], total=total, page=page, size=size)
 
 
 @router.get("/{image_id}", response_model=ImageDetail)
