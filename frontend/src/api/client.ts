@@ -25,6 +25,16 @@ export type ImageList = {
   size: number;
 };
 
+export type ImageListParams = {
+  page?: number;
+  size?: number;
+  q?: string;
+  tag?: string;
+  format?: string;
+  sort?: 'indexed_at' | 'modified_at' | 'file_size' | 'width' | 'height';
+  order?: 'asc' | 'desc';
+};
+
 export type Stats = {
   total_images: number;
   tags: Record<string, number>;
@@ -62,10 +72,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  listImages: (page = 1, size = 50, tag?: string) => {
-    const params = new URLSearchParams({ page: String(page), size: String(size) });
-    if (tag) params.set('tag', tag);
-    return request<ImageList>(`/api/images?${params}`);
+  listImages: (params: ImageListParams = {}) => {
+    const searchParams = new URLSearchParams({
+      page: String(params.page ?? 1),
+      size: String(params.size ?? 50),
+    });
+    if (params.q) searchParams.set('q', params.q);
+    if (params.tag) searchParams.set('tag', params.tag);
+    if (params.format) searchParams.set('format', params.format);
+    if (params.sort) searchParams.set('sort', params.sort);
+    if (params.order) searchParams.set('order', params.order);
+    return request<ImageList>(`/api/images?${searchParams}`);
   },
   getImage: (id: string) => request<ImageDetail>(`/api/images/${encodeURIComponent(id)}`),
   recognizeImage: (id: string) =>
