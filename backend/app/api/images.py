@@ -26,6 +26,7 @@ def to_image_item(image: Image) -> ImageItem:
     annotation = image.annotation
     tags = parse_json_list(annotation.tags) if annotation else []
     caption = annotation.caption if annotation else ""
+    model_used = annotation.model_used if annotation else ""
     return ImageItem(
         id=image.id,
         file_path=image.file_path,
@@ -38,6 +39,7 @@ def to_image_item(image: Image) -> ImageItem:
         indexed_at=image.indexed_at,
         caption=caption,
         tags=tags,
+        model_used=model_used,
         image_url=f"/api/images/{image.id}/file",
     )
 
@@ -48,7 +50,6 @@ def to_image_detail(image: Image) -> ImageDetail:
     return ImageDetail(
         **item.model_dump(),
         objects=parse_json_list(annotation.objects) if annotation else [],
-        model_used=annotation.model_used if annotation else "",
     )
 
 

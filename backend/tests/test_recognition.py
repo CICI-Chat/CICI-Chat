@@ -50,7 +50,7 @@ def test_mock_recognizer_tags_landscape_images():
 
     assert isinstance(result, RecognitionResult)
     assert result.caption == "待分析的本地图片"
-    assert result.tags == ["本地图片", "待分析", "landscape"]
+    assert result.tags == ["本地图片", "landscape"]
     assert result.objects == []
     assert result.model_used == "mock"
 
@@ -58,13 +58,13 @@ def test_mock_recognizer_tags_landscape_images():
 def test_mock_recognizer_tags_portrait_images():
     result = MockRecognizer().recognize(_image_input(width=600, height=800))
 
-    assert result.tags == ["本地图片", "待分析", "portrait"]
+    assert result.tags == ["本地图片", "portrait"]
 
 
 def test_mock_recognizer_tags_square_images():
     result = MockRecognizer().recognize(_image_input(width=600, height=600))
 
-    assert result.tags == ["本地图片", "待分析", "square"]
+    assert result.tags == ["本地图片", "square"]
 
 
 def test_recognition_service_creates_annotation(db_session, sample_image):

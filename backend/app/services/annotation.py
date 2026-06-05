@@ -35,7 +35,7 @@ class MockRecognizer:
 
         return RecognitionResult(
             caption="待分析的本地图片",
-            tags=["本地图片", "待分析", orientation],
+            tags=["本地图片", orientation],
             objects=[],
             model_used="mock",
         )
