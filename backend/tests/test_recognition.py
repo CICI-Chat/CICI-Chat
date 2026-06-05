@@ -4,9 +4,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from PIL import Image as PillowImage
 
 from app.models import Annotation, Image
 from app.services.annotation import ImageRecognitionInput, MockRecognizer, RecognitionResult
+from app.services.color_analysis import detect_dominant_color_label
 from app.services.recognition import ImageFileMissingError, ImageNotFoundError, RecognitionService
 
 
@@ -45,12 +47,23 @@ def _stored_image(db_session, path: Path) -> Image:
     return image
 
 
-def test_mock_recognizer_tags_landscape_images():
-    result = MockRecognizer().recognize(_image_input(width=800, height=600))
+def test_mock_recognizer_tags_landscape_images(tmp_path):
+    path = tmp_path / "landscape-yellow.png"
+    PillowImage.new("RGB", (80, 60), color=(255, 230, 0)).save(path)
+
+    result = MockRecognizer().recognize(
+        ImageRecognitionInput(
+            image_id="image-1",
+            file_path=str(path),
+            width=800,
+            height=600,
+            format="PNG",
+        )
+    )
 
     assert isinstance(result, RecognitionResult)
     assert result.caption == "待分析的本地图片"
-    assert result.tags == ["本地图片", "landscape"]
+    assert result.tags == ["本地图片", "landscape", "黄色"]
     assert result.objects == []
     assert result.model_used == "mock"
 
@@ -96,6 +109,34 @@ def test_recognition_service_creates_annotation(db_session, sample_image):
             format="PNG",
         )
     ]
+
+
+def test_mock_recognizer_keeps_orientation_when_color_analysis_fails(tmp_path):
+    path = tmp_path / "broken.png"
+    path.write_text("not an image", encoding="utf-8")
+
+    result = MockRecognizer().recognize(
+        ImageRecognitionInput(
+            image_id="image-1",
+            file_path=str(path),
+            width=800,
+            height=600,
+            format="PNG",
+        )
+    )
+
+    assert result.tags == ["本地图片", "landscape"]
+
+
+def test_recognition_service_persists_mock_color_tag(db_session, tmp_path):
+    image_path = tmp_path / "yellow-service.png"
+    PillowImage.new("RGB", (32, 24), color=(255, 230, 0)).save(image_path)
+    image = _stored_image(db_session, image_path)
+
+    refreshed = RecognitionService(MockRecognizer()).recognize_image(image.id, db_session)
+
+    assert json.loads(refreshed.annotation.tags) == ["本地图片", "landscape", "黄色"]
+    assert "待分析" not in json.loads(refreshed.annotation.tags)
 
 
 def test_recognition_service_overwrites_existing_annotation(db_session, sample_image):
@@ -146,3 +187,17 @@ def test_recognition_service_raises_for_missing_file_before_calling_recognizer(d
         RecognitionService(recognizer).recognize_image(image.id, db_session)
 
     assert recognizer.calls == []
+
+
+def test_detect_dominant_color_label_identifies_red(tmp_path):
+    path = tmp_path / "red.png"
+    PillowImage.new("RGB", (20, 20), color=(255, 0, 0)).save(path)
+
+    assert detect_dominant_color_label(path) == "红色"
+
+
+def test_detect_dominant_color_label_identifies_yellow(tmp_path):
+    path = tmp_path / "yellow.png"
+    PillowImage.new("RGB", (20, 20), color=(255, 230, 0)).save(path)
+
+    assert detect_dominant_color_label(path) == "黄色"
