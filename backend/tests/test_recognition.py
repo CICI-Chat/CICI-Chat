@@ -111,6 +111,17 @@ def test_recognition_service_creates_annotation(db_session, sample_image):
     ]
 
 
+def test_recognition_service_persists_mock_color_tag(db_session, tmp_path):
+    image_path = tmp_path / "yellow-service.png"
+    PillowImage.new("RGB", (32, 24), color=(255, 230, 0)).save(image_path)
+    image = _stored_image(db_session, image_path)
+
+    refreshed = RecognitionService(MockRecognizer()).recognize_image(image.id, db_session)
+
+    assert json.loads(refreshed.annotation.tags) == ["本地图片", "landscape", "黄色"]
+    assert "待分析" not in json.loads(refreshed.annotation.tags)
+
+
 def test_recognition_service_overwrites_existing_annotation(db_session, sample_image):
     image = _stored_image(db_session, sample_image)
     db_session.add(
