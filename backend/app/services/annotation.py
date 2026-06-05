@@ -1,5 +1,8 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
+
+from app.services.color_analysis import detect_dominant_color_label
 
 
 @dataclass(frozen=True)
@@ -33,9 +36,16 @@ class MockRecognizer:
         else:
             orientation = "square"
 
+        tags = ["本地图片", orientation]
+        file_path = Path(image.file_path)
+        if file_path.exists() and file_path.is_file():
+            color_label = detect_dominant_color_label(file_path)
+            if color_label is not None:
+                tags.append(color_label)
+
         return RecognitionResult(
             caption="待分析的本地图片",
-            tags=["本地图片", orientation],
+            tags=tags,
             objects=[],
             model_used="mock",
         )

@@ -47,12 +47,23 @@ def _stored_image(db_session, path: Path) -> Image:
     return image
 
 
-def test_mock_recognizer_tags_landscape_images():
-    result = MockRecognizer().recognize(_image_input(width=800, height=600))
+def test_mock_recognizer_tags_landscape_images(tmp_path):
+    path = tmp_path / "landscape-yellow.png"
+    PillowImage.new("RGB", (80, 60), color=(255, 230, 0)).save(path)
+
+    result = MockRecognizer().recognize(
+        ImageRecognitionInput(
+            image_id="image-1",
+            file_path=str(path),
+            width=800,
+            height=600,
+            format="PNG",
+        )
+    )
 
     assert isinstance(result, RecognitionResult)
     assert result.caption == "待分析的本地图片"
-    assert result.tags == ["本地图片", "landscape"]
+    assert result.tags == ["本地图片", "landscape", "黄色"]
     assert result.objects == []
     assert result.model_used == "mock"
 
