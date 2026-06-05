@@ -111,6 +111,23 @@ def test_recognition_service_creates_annotation(db_session, sample_image):
     ]
 
 
+def test_mock_recognizer_keeps_orientation_when_color_analysis_fails(tmp_path):
+    path = tmp_path / "broken.png"
+    path.write_text("not an image", encoding="utf-8")
+
+    result = MockRecognizer().recognize(
+        ImageRecognitionInput(
+            image_id="image-1",
+            file_path=str(path),
+            width=800,
+            height=600,
+            format="PNG",
+        )
+    )
+
+    assert result.tags == ["本地图片", "landscape"]
+
+
 def test_recognition_service_persists_mock_color_tag(db_session, tmp_path):
     image_path = tmp_path / "yellow-service.png"
     PillowImage.new("RGB", (32, 24), color=(255, 230, 0)).save(image_path)

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from PIL import Image as PillowImage
+from PIL import UnidentifiedImageError
 
 COLOR_PALETTE: tuple[tuple[str, tuple[int, int, int]], ...] = (
     ("黑色", (0, 0, 0)),
@@ -18,10 +19,13 @@ COLOR_PALETTE: tuple[tuple[str, tuple[int, int, int]], ...] = (
 
 
 def detect_dominant_color_label(file_path: str | Path) -> str | None:
-    with PillowImage.open(file_path) as image:
-        rgb_image = image.convert("RGB")
-        rgb_image.thumbnail((64, 64))
-        colors = rgb_image.getcolors(maxcolors=64 * 64)
+    try:
+        with PillowImage.open(file_path) as image:
+            rgb_image = image.convert("RGB")
+            rgb_image.thumbnail((64, 64))
+            colors = rgb_image.getcolors(maxcolors=64 * 64)
+    except (OSError, UnidentifiedImageError):
+        return None
 
     if not colors:
         return None
