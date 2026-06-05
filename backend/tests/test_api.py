@@ -333,7 +333,7 @@ def test_post_recognize_image_returns_refreshed_detail(api_client: TestClient):
     payload = response.json()
     assert payload["id"] == image_id
     assert payload["caption"] == "待分析的本地图片"
-    assert payload["tags"] == ["本地图片", "landscape"]
+    assert payload["tags"] == ["本地图片", "landscape", "红色"]
     assert payload["objects"] == []
     assert payload["model_used"] == "mock"
 
