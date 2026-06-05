@@ -10,6 +10,7 @@ export type ImageItem = {
   indexed_at: string;
   caption: string;
   tags: string[];
+  model_used: string;
   image_url: string;
 };
 

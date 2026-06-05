@@ -15,6 +15,7 @@ class ImageItem(BaseModel):
     indexed_at: datetime
     caption: str
     tags: list[str]
+    model_used: str
     image_url: str
 
 

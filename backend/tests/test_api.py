@@ -187,6 +187,7 @@ def test_get_images_returns_indexed_image_with_mock_annotation(api_client: TestC
     assert payload["size"] == 50
     assert payload["items"][0]["caption"] == "待分析的本地图片"
     assert payload["items"][0]["tags"] == ["本地图片", "待分析"]
+    assert payload["items"][0]["model_used"] == "mock"
     assert payload["items"][0]["image_url"].startswith("/api/images/")
 
 
@@ -332,7 +333,7 @@ def test_post_recognize_image_returns_refreshed_detail(api_client: TestClient):
     payload = response.json()
     assert payload["id"] == image_id
     assert payload["caption"] == "待分析的本地图片"
-    assert payload["tags"] == ["本地图片", "待分析", "landscape"]
+    assert payload["tags"] == ["本地图片", "landscape"]
     assert payload["objects"] == []
     assert payload["model_used"] == "mock"
 

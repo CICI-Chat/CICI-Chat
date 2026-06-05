@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ImageItem, ImageListParams, RecognitionBatch } from '../api/client';
 
 const isBatchActive = (batch: RecognitionBatch | null) => batch?.status === 'pending' || batch?.status === 'running';
+const isUnrecognizedImage = (image: ImageItem) => image.model_used === 'mock' && image.tags.includes('待分析');
 
 type SortField = NonNullable<ImageListParams['sort']>;
 type SortOrder = NonNullable<ImageListParams['order']>;
@@ -104,6 +105,14 @@ export default function Gallery({ onSelectImage }: { onSelectImage: (id: string)
     setSelectedIds((current) => (checked ? (current.includes(imageId) ? current : [...current, imageId]) : current.filter((id) => id !== imageId)));
   };
 
+  const selectAllImages = () => {
+    setSelectedIds(images.map((image) => image.id));
+  };
+
+  const selectUnrecognizedImages = () => {
+    setSelectedIds(images.filter(isUnrecognizedImage).map((image) => image.id));
+  };
+
   const startBatchRecognition = () => {
     if (selectedIds.length === 0 || isBatchActive(batch) || batchSubmitting) return;
 
@@ -133,8 +142,24 @@ export default function Gallery({ onSelectImage }: { onSelectImage: (id: string)
             <h2 className="text-xl font-semibold">图库</h2>
             <p className="text-sm text-slate-500">共 {total} 张图片</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="text-sm text-slate-500">已选择 {selectedIds.length} 张</span>
+            <button
+              type="button"
+              onClick={selectAllImages}
+              disabled={images.length === 0 || batchActive}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+            >
+              全选
+            </button>
+            <button
+              type="button"
+              onClick={selectUnrecognizedImages}
+              disabled={!images.some(isUnrecognizedImage) || batchActive}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+            >
+              全选尚未识别
+            </button>
             <button
               type="button"
               onClick={startBatchRecognition}
