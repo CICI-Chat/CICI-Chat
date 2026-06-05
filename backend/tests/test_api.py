@@ -338,6 +338,20 @@ def test_post_recognize_image_returns_refreshed_detail(api_client: TestClient):
     assert payload["model_used"] == "mock"
 
 
+def test_list_images_searches_recognized_color_tag(api_client: TestClient):
+    image_id = api_client.get("/api/images").json()["items"][0]["id"]
+    recognize_response = api_client.post(f"/api/images/{image_id}/recognize")
+    assert recognize_response.status_code == 200
+
+    response = api_client.get("/api/images", params={"q": "红色"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["id"] == image_id
+    assert "红色" in payload["items"][0]["tags"]
+
+
 def test_post_recognize_missing_image_returns_404(api_client: TestClient):
     response = api_client.post("/api/images/missing/recognize")
 
