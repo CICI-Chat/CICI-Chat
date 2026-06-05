@@ -4,9 +4,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from PIL import Image as PillowImage
 
 from app.models import Annotation, Image
 from app.services.annotation import ImageRecognitionInput, MockRecognizer, RecognitionResult
+from app.services.color_analysis import detect_dominant_color_label
 from app.services.recognition import ImageFileMissingError, ImageNotFoundError, RecognitionService
 
 
@@ -146,3 +148,17 @@ def test_recognition_service_raises_for_missing_file_before_calling_recognizer(d
         RecognitionService(recognizer).recognize_image(image.id, db_session)
 
     assert recognizer.calls == []
+
+
+def test_detect_dominant_color_label_identifies_red(tmp_path):
+    path = tmp_path / "red.png"
+    PillowImage.new("RGB", (20, 20), color=(255, 0, 0)).save(path)
+
+    assert detect_dominant_color_label(path) == "红色"
+
+
+def test_detect_dominant_color_label_identifies_yellow(tmp_path):
+    path = tmp_path / "yellow.png"
+    PillowImage.new("RGB", (20, 20), color=(255, 230, 0)).save(path)
+
+    assert detect_dominant_color_label(path) == "黄色"
