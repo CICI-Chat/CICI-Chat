@@ -1,26 +1,26 @@
 from pathlib import Path
 
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.database import Base
-from app.models import Annotation, Image
+from app.database import Base, create_sqlite_engine
+from app.models import Annotation, Image, RecognitionBatch, RecognitionBatchItem
 
 
 def test_database_models_create_expected_tables(tmp_path: Path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    engine = create_sqlite_engine(tmp_path / 'test.db')
 
     Base.metadata.create_all(bind=engine)
 
     tables = set(inspect(engine).get_table_names())
-    assert tables == {"images", "annotations"}
+    assert tables == {"images", "annotations", "recognition_batches", "recognition_batch_items"}
     assert Image.__tablename__ == "images"
     assert Annotation.__tablename__ == "annotations"
 
 
 def test_insert_image_and_annotation_relation_and_default_times(tmp_path: Path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    engine = create_sqlite_engine(tmp_path / 'test.db')
     Base.metadata.create_all(bind=engine)
 
     with Session(engine) as session:
@@ -61,7 +61,7 @@ def test_insert_image_and_annotation_relation_and_default_times(tmp_path: Path):
 
 
 def test_duplicate_file_hash_raises_integrity_error(tmp_path: Path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    engine = create_sqlite_engine(tmp_path / 'test.db')
     Base.metadata.create_all(bind=engine)
 
     with Session(engine) as session:
@@ -93,8 +93,25 @@ def test_duplicate_file_hash_raises_integrity_error(tmp_path: Path):
             session.rollback()
 
 
+def test_recognition_batch_item_rejects_missing_image_id(tmp_path: Path):
+    engine = create_sqlite_engine(tmp_path / 'test.db')
+    Base.metadata.create_all(bind=engine)
+
+    with Session(engine) as session:
+        batch = RecognitionBatch(id="batch-1", status="queued", total=1)
+        session.add(batch)
+        session.flush()
+        session.add(RecognitionBatchItem(batch_id=batch.id, image_id="missing-image", status="queued"))
+
+        try:
+            session.commit()
+            raise AssertionError("Expected IntegrityError was not raised")
+        except IntegrityError:
+            session.rollback()
+
+
 def test_delete_image_cascades_to_annotation(tmp_path: Path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    engine = create_sqlite_engine(tmp_path / 'test.db')
     Base.metadata.create_all(bind=engine)
 
     with Session(engine) as session:

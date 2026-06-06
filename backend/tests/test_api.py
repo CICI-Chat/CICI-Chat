@@ -16,15 +16,16 @@ from app.services.indexer import index_folders
 
 @contextmanager
 def make_api_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from app.config import Settings
+    from app.config import Settings, get_settings
     from app.database import get_db
     from app.main import create_app
 
     tmp_path.mkdir(parents=True, exist_ok=True)
     test_settings = Settings(watch_folders=str(tmp_path), db_path=tmp_path / "api.db")
+    monkeypatch.setattr("app.api.images.get_settings", lambda: test_settings)
     monkeypatch.setattr("app.api.reindex.get_settings", lambda: test_settings)
     monkeypatch.setattr("app.api.settings.get_settings", lambda: test_settings)
-    app = create_app(run_startup_indexing=False)
+    app = create_app(run_startup_indexing=False, run_batch_worker=False)
 
     engine = create_engine(f"sqlite:///{tmp_path / 'api.db'}", connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=engine)
@@ -46,6 +47,7 @@ def make_api_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_settings] = lambda: test_settings
     try:
         with TestClient(app) as client:
             yield client
@@ -69,6 +71,7 @@ def add_indexed_image(
     indexed_at: datetime,
 ) -> Image:
     image_path = tmp_path / filename
+    image_path.parent.mkdir(parents=True, exist_ok=True)
     PillowImage.new("RGB", size, color=color).save(image_path)
     image = Image(
         file_path=str(image_path.resolve()),
@@ -98,16 +101,23 @@ def add_indexed_image(
 
 
 @contextmanager
-def make_gallery_query_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from app.config import Settings
+def make_gallery_query_client(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    include_color_search_images: bool = False,
+    extra_travel_images: int = 0,
+):
+    from app.config import Settings, get_settings
     from app.database import get_db
     from app.main import create_app
 
     tmp_path.mkdir(parents=True, exist_ok=True)
     test_settings = Settings(watch_folders=str(tmp_path), db_path=tmp_path / "gallery-query.db")
+    monkeypatch.setattr("app.api.images.get_settings", lambda: test_settings)
     monkeypatch.setattr("app.api.reindex.get_settings", lambda: test_settings)
     monkeypatch.setattr("app.api.settings.get_settings", lambda: test_settings)
-    app = create_app(run_startup_indexing=False)
+    app = create_app(run_startup_indexing=False, run_batch_worker=False)
 
     engine = create_engine(f"sqlite:///{tmp_path / 'gallery-query.db'}", connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=engine)
@@ -154,6 +164,190 @@ def make_gallery_query_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             modified_at=now,
             indexed_at=now - timedelta(minutes=1),
         )
+        add_indexed_image(
+            session,
+            tmp_path,
+            filename="travel/beach.png",
+            size=(40, 30),
+            color="yellow",
+            caption="海边旅行",
+            tags=["旅行"],
+            file_size=500,
+            format="PNG",
+            modified_at=now + timedelta(minutes=11),
+            indexed_at=now + timedelta(minutes=11),
+        )
+        add_indexed_image(
+            session,
+            tmp_path,
+            filename="travel/mountain.png",
+            size=(42, 30),
+            color="blue",
+            caption="山间旅行",
+            tags=["旅行"],
+            file_size=501,
+            format="PNG",
+            modified_at=now + timedelta(minutes=12),
+            indexed_at=now + timedelta(minutes=12),
+        )
+        add_indexed_image(
+            session,
+            tmp_path,
+            filename="family/portrait.png",
+            size=(30, 42),
+            color="green",
+            caption="家庭照片",
+            tags=["家庭"],
+            file_size=502,
+            format="PNG",
+            modified_at=now + timedelta(minutes=13),
+            indexed_at=now + timedelta(minutes=13),
+        )
+        for index in range(extra_travel_images):
+            add_indexed_image(
+                session,
+                tmp_path,
+                filename=f"travel/extra-{index}.png",
+                size=(24, 24),
+                color="yellow",
+                caption=f"额外旅行 {index}",
+                tags=["旅行"],
+                file_size=600 + index,
+                format="PNG",
+                modified_at=now + timedelta(minutes=20 + index),
+                indexed_at=now + timedelta(minutes=20 + index),
+            )
+        if include_color_search_images:
+            add_indexed_image(
+                session,
+                tmp_path,
+                filename="exact-yellow.png",
+                size=(40, 40),
+                color="yellow",
+                caption="颜色样本一",
+                tags=["黄色"],
+                file_size=400,
+                format="PNG",
+                modified_at=now + timedelta(minutes=1),
+                indexed_at=now + timedelta(minutes=1),
+            )
+            add_indexed_image(
+                session,
+                tmp_path,
+                filename="deep-yellow.png",
+                size=(40, 40),
+                color="yellow",
+                caption="颜色样本二",
+                tags=["深黄色"],
+                file_size=401,
+                format="PNG",
+                modified_at=now + timedelta(minutes=2),
+                indexed_at=now + timedelta(minutes=2),
+            )
+            add_indexed_image(
+                session,
+                tmp_path,
+                filename="light-yellow.png",
+                size=(40, 40),
+                color="yellow",
+                caption="颜色样本三",
+                tags=["浅黄色"],
+                file_size=402,
+                format="PNG",
+                modified_at=now + timedelta(minutes=3),
+                indexed_at=now + timedelta(minutes=3),
+            )
+            add_indexed_image(
+                session,
+                tmp_path,
+                filename="sample-a.png",
+                size=(40, 40),
+                color="red",
+                caption="颜色样本四",
+                tags=["浅红色"],
+                file_size=403,
+                format="PNG",
+                modified_at=now + timedelta(minutes=4),
+                indexed_at=now + timedelta(minutes=4),
+            )
+            add_indexed_image(
+                session,
+                tmp_path,
+                filename="sample-b.png",
+                size=(40, 40),
+                color="red",
+                caption="颜色样本五",
+                tags=["红色"],
+                file_size=404,
+                format="PNG",
+                modified_at=now + timedelta(minutes=5),
+                indexed_at=now + timedelta(minutes=5),
+            )
+            add_indexed_image(
+                session,
+                tmp_path,
+                filename="sample-c.png",
+                size=(40, 40),
+                color="red",
+                caption="颜色样本六",
+                tags=["深红色"],
+                file_size=405,
+                format="PNG",
+                modified_at=now + timedelta(minutes=6),
+                indexed_at=now + timedelta(minutes=6),
+            )
+            add_indexed_image(
+                session,
+                tmp_path,
+                filename="sample-d.png",
+                size=(40, 40),
+                color="blue",
+                caption="颜色样本七",
+                tags=["浅蓝色"],
+                file_size=406,
+                format="PNG",
+                modified_at=now + timedelta(minutes=7),
+                indexed_at=now + timedelta(minutes=7),
+            )
+            add_indexed_image(
+                session,
+                tmp_path,
+                filename="sample-e.png",
+                size=(40, 40),
+                color="blue",
+                caption="颜色样本八",
+                tags=["蓝色"],
+                file_size=407,
+                format="PNG",
+                modified_at=now + timedelta(minutes=8),
+                indexed_at=now + timedelta(minutes=8),
+            )
+            add_indexed_image(
+                session,
+                tmp_path,
+                filename="sample-f.png",
+                size=(40, 40),
+                color="blue",
+                caption="颜色样本九",
+                tags=["深蓝色"],
+                file_size=408,
+                format="PNG",
+                modified_at=now + timedelta(minutes=9),
+                indexed_at=now + timedelta(minutes=9),
+            )
+            add_indexed_image(
+                session,
+                tmp_path,
+                filename="sample-g.png",
+                size=(40, 40),
+                color="black",
+                caption="颜色样本十",
+                tags=["%"],
+                file_size=409,
+                format="PNG",
+                modified_at=now + timedelta(minutes=10),
+                indexed_at=now + timedelta(minutes=10),
+            )
 
     def override_get_db():
         db: Session = SessionLocal()
@@ -163,6 +357,7 @@ def make_gallery_query_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_settings] = lambda: test_settings
     try:
         with TestClient(app) as client:
             yield client
@@ -211,14 +406,100 @@ def test_list_images_searches_tags(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert [item["caption"] for item in payload["items"]] == ["家庭相册"]
 
 
-def test_list_images_searches_file_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    with make_gallery_query_client(tmp_path, monkeypatch) as client:
-        response = client.get("/api/images", params={"q": "mountain"})
+def test_list_images_searches_color_family_with_chinese_base_color(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    with make_gallery_query_client(tmp_path, monkeypatch, include_color_search_images=True) as client:
+        response = client.get("/api/images", params={"q": "红色", "sort": "file_size", "order": "asc"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 3
+    assert [item["tags"] for item in payload["items"]] == [["浅红色"], ["红色"], ["深红色"]]
+
+
+def test_list_images_searches_color_family_with_english_base_color(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    with make_gallery_query_client(tmp_path, monkeypatch, include_color_search_images=True) as client:
+        response = client.get("/api/images", params={"q": "blue", "sort": "file_size", "order": "asc"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 3
+    assert [item["tags"] for item in payload["items"]] == [["浅蓝色"], ["蓝色"], ["深蓝色"]]
+
+
+def test_list_images_searches_light_color_with_english_alias(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch, include_color_search_images=True) as client:
+        response = client.get("/api/images", params={"q": "light yellow"})
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["total"] == 1
-    assert [item["caption"] for item in payload["items"]] == ["雪山日出"]
+    assert [item["tags"] for item in payload["items"]] == [["浅黄色"]]
+
+
+def test_list_images_escapes_tag_search_wildcards(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch, include_color_search_images=True) as client:
+        response = client.get("/api/images", params={"q": "%"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["tags"] for item in payload["items"]] == [["%"]]
+
+
+def test_list_images_escapes_tag_filter_wildcards(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch, include_color_search_images=True) as client:
+        response = client.get("/api/images", params={"tag": "%"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["tags"] for item in payload["items"]] == [["%"]]
+
+
+def test_list_images_searches_file_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch) as client:
+        response = client.get("/api/images", params={"q": "city"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["caption"] for item in payload["items"]] == ["城市夜景"]
+
+
+def test_list_images_filters_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch) as client:
+        response = client.get(
+            "/api/images",
+            params={"folder": str((tmp_path / "travel").resolve()), "sort": "file_size", "order": "asc"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 2
+    assert [item["caption"] for item in payload["items"]] == ["海边旅行", "山间旅行"]
+
+
+def test_list_images_rejects_folder_outside_watch_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch) as client:
+        response = client.get("/api/images", params={"folder": str(tmp_path.parent.resolve())})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Folder must be inside a watch folder"
+
+
+def test_get_image_folders_returns_indexed_subfolders(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch) as client:
+        response = client.get("/api/images/folders")
+
+    assert response.status_code == 200
+    folders = response.json()
+    folder_counts = {Path(folder["path"]).name: folder["image_count"] for folder in folders}
+    assert folder_counts["travel"] == 2
+    assert folder_counts["family"] == 1
 
 
 def test_list_images_filters_format(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -230,8 +511,8 @@ def test_list_images_filters_format(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["total"] == 2
-    assert [item["caption"] for item in payload["items"]] == ["家庭相册", "雪山日出"]
+    assert payload["total"] == 5
+    assert [item["caption"] for item in payload["items"]] == ["家庭相册", "雪山日出", "海边旅行", "山间旅行", "家庭照片"]
 
 
 def test_list_images_combines_tag_and_search(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -250,7 +531,7 @@ def test_list_images_sorts_by_width_desc(tmp_path: Path, monkeypatch: pytest.Mon
 
     assert response.status_code == 200
     payload = response.json()
-    assert [item["caption"] for item in payload["items"]] == ["雪山日出", "家庭相册", "城市夜景"]
+    assert [item["caption"] for item in payload["items"]] == ["雪山日出", "家庭相册", "山间旅行", "海边旅行", "城市夜景", "家庭照片"]
 
 
 def test_list_images_rejects_unknown_sort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -338,7 +619,7 @@ def test_post_recognize_image_returns_refreshed_detail(api_client: TestClient):
     assert payload["model_used"] == "mock"
 
 
-def test_list_images_searches_recognized_color_tag(api_client: TestClient):
+def test_list_images_searches_recognized_refined_color_tag(api_client: TestClient):
     image_id = api_client.get("/api/images").json()["items"][0]["id"]
     recognize_response = api_client.post(f"/api/images/{image_id}/recognize")
     assert recognize_response.status_code == 200
@@ -359,25 +640,59 @@ def test_post_recognize_missing_image_returns_404(api_client: TestClient):
     assert response.json()["detail"] == "Image not found"
 
 
-def test_post_recognition_batch_runs_and_get_returns_progress(api_client: TestClient):
+def test_post_recognition_batch_enqueues_and_get_returns_progress(api_client: TestClient):
     image_id = api_client.get("/api/images").json()["items"][0]["id"]
 
-    create_response = api_client.post("/api/recognition/batches", json={"image_ids": [image_id, "missing"]})
+    create_response = api_client.post("/api/recognition/batches", json={"image_ids": [image_id]})
 
-    assert create_response.status_code == 201
+    assert create_response.status_code == 202
     created = create_response.json()
-    assert set(created) == {"batch_id", "total", "completed", "failed", "pending", "running", "status"}
-    assert created["total"] == 2
-    assert created["completed"] == 1
-    assert created["failed"] == 1
-    assert created["pending"] == 0
+    assert set(created) == {"batch_id", "total", "completed", "failed", "pending", "running", "cancelled", "status"}
+    assert created["total"] == 1
+    assert created["completed"] == 0
+    assert created["failed"] == 0
+    assert created["pending"] == 1
     assert created["running"] == 0
-    assert created["status"] == "failed"
+    assert created["cancelled"] == 0
+    assert created["status"] == "queued"
 
     get_response = api_client.get(f"/api/recognition/batches/{created['batch_id']}")
 
     assert get_response.status_code == 200
     assert get_response.json() == created
+
+
+def test_post_recognition_batch_rejects_missing_image_ids(api_client: TestClient):
+    response = api_client.post("/api/recognition/batches", json={"image_ids": ["missing"]})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Batch contains unknown images"
+
+
+def test_post_recognition_batch_accepts_folder_selection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch) as client:
+        response = client.post(
+            "/api/recognition/batches",
+            json={"selection": {"folder": str((tmp_path / "travel").resolve())}},
+        )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["total"] == 2
+    assert payload["completed"] == 0
+    assert payload["pending"] == 2
+    assert payload["status"] == "queued"
+
+
+def test_post_recognition_batch_accepts_selection_over_previous_batch_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch, extra_travel_images=199) as client:
+        response = client.post("/api/recognition/batches", json={"selection": {"q": "旅行"}})
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["total"] == 203
+    assert payload["pending"] == 203
+    assert payload["status"] == "queued"
 
 
 def test_post_empty_recognition_batch_returns_400(api_client: TestClient):
@@ -386,28 +701,44 @@ def test_post_empty_recognition_batch_returns_400(api_client: TestClient):
     assert response.status_code == 400
 
 
-def test_post_oversized_recognition_batch_returns_422(api_client: TestClient):
-    response = api_client.post(
-        "/api/recognition/batches",
-        json={"image_ids": [f"image-{index}" for index in range(201)]},
-    )
+def test_post_large_explicit_recognition_batch_is_queued(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_gallery_query_client(tmp_path, monkeypatch, extra_travel_images=195) as client:
+        first_page = client.get("/api/images", params={"size": 100}).json()["items"]
+        second_page = client.get("/api/images", params={"page": 2, "size": 100}).json()["items"]
+        third_page = client.get("/api/images", params={"page": 3, "size": 100}).json()["items"]
+        image_ids = [image["id"] for image in [*first_page, *second_page, *third_page]][:201]
+        response = client.post("/api/recognition/batches", json={"image_ids": image_ids})
 
-    assert response.status_code == 422
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["total"] == 201
+    assert payload["pending"] == 201
+    assert payload["status"] == "queued"
 
 
-def test_recognition_batches_are_isolated_between_app_instances(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    with make_api_client(tmp_path / "first", monkeypatch) as first_client:
-        image_id = first_client.get("/api/images").json()["items"][0]["id"]
-        create_response = first_client.post("/api/recognition/batches", json={"image_ids": [image_id]})
-        assert create_response.status_code == 201
-        batch_id = create_response.json()["batch_id"]
+def test_recognition_batch_control_endpoints_update_status(api_client: TestClient):
+    image_id = api_client.get("/api/images").json()["items"][0]["id"]
+    create_response = api_client.post("/api/recognition/batches", json={"image_ids": [image_id]})
+    batch_id = create_response.json()["batch_id"]
 
-    with make_api_client(tmp_path / "second", monkeypatch) as second_client:
-        response = second_client.get(f"/api/recognition/batches/{batch_id}")
+    pause_response = api_client.post(f"/api/recognition/batches/{batch_id}/pause")
+    resume_response = api_client.post(f"/api/recognition/batches/{batch_id}/resume")
+    cancel_response = api_client.post(f"/api/recognition/batches/{batch_id}/cancel")
+
+    assert pause_response.status_code == 200
+    assert pause_response.json()["status"] == "paused"
+    assert resume_response.status_code == 200
+    assert resume_response.json()["status"] == "queued"
+    assert cancel_response.status_code == 200
+    assert cancel_response.json()["status"] == "cancelled"
+    assert cancel_response.json()["cancelled"] == 1
+
+
+def test_missing_recognition_batch_control_returns_404(api_client: TestClient):
+    response = api_client.post("/api/recognition/batches/missing/cancel")
 
     assert response.status_code == 404
+    assert response.json()["detail"] == "Batch not found"
 
 
 def test_get_missing_recognition_batch_returns_404(api_client: TestClient):

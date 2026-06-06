@@ -40,3 +40,40 @@ class Annotation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
 
     image: Mapped[Image] = relationship(back_populates="annotation")
+
+
+class RecognitionBatch(Base):
+    __tablename__ = "recognition_batches"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cancelled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
+
+    items: Mapped[list["RecognitionBatchItem"]] = relationship(back_populates="batch", cascade="all, delete-orphan")
+
+
+class RecognitionBatchItem(Base):
+    __tablename__ = "recognition_batch_items"
+    __table_args__ = (UniqueConstraint("batch_id", "image_id", name="uq_recognition_batch_item_image"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    batch_id: Mapped[str] = mapped_column(ForeignKey("recognition_batches.id"), nullable=False)
+    image_id: Mapped[str] = mapped_column(ForeignKey("images.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
+
+    batch: Mapped[RecognitionBatch] = relationship(back_populates="items")
+    image: Mapped[Image] = relationship()

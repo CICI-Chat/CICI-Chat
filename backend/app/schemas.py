@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ImageItem(BaseModel):
@@ -26,13 +26,28 @@ class ImageList(BaseModel):
     size: int
 
 
+class ImageFolder(BaseModel):
+    path: str
+    name: str
+    image_count: int
+
+
 class ImageDetail(ImageItem):
     objects: list[dict[str, object]]
     model_used: str
 
 
+class RecognitionSelection(BaseModel):
+    q: str | None = None
+    tag: str | None = None
+    format: str | None = None
+    folder: str | None = None
+    unrecognized_only: bool = False
+
+
 class RecognitionBatchCreate(BaseModel):
-    image_ids: list[str] = Field(max_length=200)
+    image_ids: list[str] | None = None
+    selection: RecognitionSelection | None = None
 
 
 class RecognitionBatchResponse(BaseModel):
@@ -42,6 +57,7 @@ class RecognitionBatchResponse(BaseModel):
     failed: int
     pending: int
     running: int
+    cancelled: int = 0
     status: str
 
 
