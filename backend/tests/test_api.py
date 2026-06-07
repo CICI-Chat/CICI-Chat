@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.database import Base
-from app.models import Annotation, Image
+from app.models import Annotation, Image, RecognitionBatch, RecognitionBatchItem
 from app.services.indexer import index_folders
 
 
@@ -98,6 +98,40 @@ def add_indexed_image(
     db.commit()
     db.refresh(image)
     return image
+
+
+@contextmanager
+def make_api_db_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from app.config import Settings, get_settings
+    from app.database import get_db
+    from app.main import create_app
+
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    test_settings = Settings(watch_folders=str(tmp_path), db_path=tmp_path / "api-batch-history.db")
+    monkeypatch.setattr("app.api.images.get_settings", lambda: test_settings)
+    monkeypatch.setattr("app.api.reindex.get_settings", lambda: test_settings)
+    monkeypatch.setattr("app.api.settings.get_settings", lambda: test_settings)
+    app = create_app(run_startup_indexing=False, run_batch_worker=False)
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'api-batch-history.db'}", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+    def override_get_db():
+        db: Session = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_settings] = lambda: test_settings
+    try:
+        with TestClient(app) as client, SessionLocal() as session:
+            yield client, session
+    finally:
+        app.dependency_overrides.clear()
+        Base.metadata.drop_all(bind=engine)
 
 
 @contextmanager
@@ -640,6 +674,197 @@ def test_post_recognize_missing_image_returns_404(api_client: TestClient):
     assert response.json()["detail"] == "Image not found"
 
 
+def test_get_recognition_batches_returns_history_newest_first(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    now = datetime(2026, 6, 7, 12, 0, tzinfo=UTC)
+    image_1 = Image(
+        id="history-image-1",
+        file_path="/tmp/history-image-1.png",
+        file_hash="history-hash-1",
+        file_size=100,
+        width=32,
+        height=24,
+        format="PNG",
+        created_at=now,
+        modified_at=now,
+        indexed_at=now,
+    )
+    image_2 = Image(
+        id="history-image-2",
+        file_path="/tmp/history-image-2.png",
+        file_hash="history-hash-2",
+        file_size=100,
+        width=32,
+        height=24,
+        format="PNG",
+        created_at=now,
+        modified_at=now,
+        indexed_at=now,
+    )
+    older = RecognitionBatch(
+        id="api-batch-older",
+        status="completed",
+        total=1,
+        created_at=datetime(2026, 6, 5, 12, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 6, 5, 12, 0, tzinfo=UTC),
+    )
+    newer = RecognitionBatch(
+        id="api-batch-newer",
+        status="failed",
+        total=1,
+        created_at=datetime(2026, 6, 7, 12, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 6, 7, 12, 0, tzinfo=UTC),
+    )
+    older.items = [RecognitionBatchItem(image_id="history-image-1", status="completed")]
+    newer.items = [RecognitionBatchItem(image_id="history-image-2", status="failed", error="boom")]
+
+    with make_api_db_client(tmp_path, monkeypatch) as (client, db_session):
+        db_session.add_all([image_1, image_2, older, newer])
+        db_session.commit()
+
+        response = client.get("/api/recognition/batches", params={"page": 1, "size": 1})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert body["page"] == 1
+    assert body["size"] == 1
+    assert [item["batch_id"] for item in body["items"]] == ["api-batch-newer"]
+    assert body["items"][0]["failed"] == 1
+    assert body["items"][0]["created_at"].startswith("2026-06-07T12:00:00")
+
+
+def test_get_recognition_batch_items_filters_failed_and_returns_image(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    now = datetime(2026, 6, 7, 12, 0, tzinfo=UTC)
+    failed_image = Image(
+        id="api-item-failed",
+        file_path="/tmp/api-item-failed.png",
+        file_hash="api-item-failed-hash",
+        file_size=100,
+        width=32,
+        height=24,
+        format="PNG",
+        created_at=now,
+        modified_at=now,
+        indexed_at=now,
+    )
+    completed_image = Image(
+        id="api-item-completed",
+        file_path="/tmp/api-item-completed.png",
+        file_hash="api-item-completed-hash",
+        file_size=100,
+        width=32,
+        height=24,
+        format="PNG",
+        created_at=now,
+        modified_at=now,
+        indexed_at=now,
+    )
+    batch = RecognitionBatch(id="api-batch-items", status="failed", total=2)
+    failed_item = RecognitionBatchItem(image_id="api-item-failed", status="failed", error="missing file")
+    batch.items = [
+        failed_item,
+        RecognitionBatchItem(image_id="api-item-completed", status="completed"),
+    ]
+
+    with make_api_db_client(tmp_path, monkeypatch) as (client, db_session):
+        db_session.add_all([failed_image, completed_image])
+        db_session.add(
+            Annotation(
+                image_id="api-item-failed",
+                caption="失败图片",
+                tags="[]",
+                objects="[]",
+                model_used="mock",
+            )
+        )
+        db_session.add(batch)
+        db_session.commit()
+        failed_item_id = failed_item.id
+
+        response = client.get(
+            "/api/recognition/batches/api-batch-items/items",
+            params={"page": 1, "size": 50, "status": "failed"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["page"] == 1
+    assert body["size"] == 50
+    assert len(body["items"]) == 1
+    item = body["items"][0]
+    assert item["id"] == failed_item_id
+    assert item["image_id"] == "api-item-failed"
+    assert item["status"] == "failed"
+    assert item["error"] == "missing file"
+    assert item["image"] == {
+        "id": "api-item-failed",
+        "file_path": "/tmp/api-item-failed.png",
+        "caption": "失败图片",
+        "image_url": "/api/images/api-item-failed/file",
+    }
+
+
+def test_get_recognition_batch_items_returns_404_for_missing_batch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_api_db_client(tmp_path, monkeypatch) as (client, _db_session):
+        response = client.get("/api/recognition/batches/missing-batch/items", params={"page": 1, "size": 50})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Batch not found"
+
+
+def test_failed_batch_items_can_create_new_recognition_batch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    now = datetime(2026, 6, 7, 12, 0, tzinfo=UTC)
+    failed_image = Image(
+        id="retry-failed-image",
+        file_path="/tmp/retry-failed-image.png",
+        file_hash="retry-failed-image-hash",
+        file_size=100,
+        width=32,
+        height=24,
+        format="PNG",
+        created_at=now,
+        modified_at=now,
+        indexed_at=now,
+    )
+    completed_image = Image(
+        id="retry-completed-image",
+        file_path="/tmp/retry-completed-image.png",
+        file_hash="retry-completed-image-hash",
+        file_size=100,
+        width=32,
+        height=24,
+        format="PNG",
+        created_at=now,
+        modified_at=now,
+        indexed_at=now,
+    )
+    batch = RecognitionBatch(id="api-batch-retry", status="failed", total=2)
+    batch.items = [
+        RecognitionBatchItem(image_id="retry-failed-image", status="failed", error="boom"),
+        RecognitionBatchItem(image_id="retry-completed-image", status="completed"),
+    ]
+
+    with make_api_db_client(tmp_path, monkeypatch) as (client, db_session):
+        db_session.add_all([failed_image, completed_image, batch])
+        db_session.commit()
+
+        items_response = client.get(
+            "/api/recognition/batches/api-batch-retry/items",
+            params={"page": 1, "size": 50, "status": "failed"},
+        )
+        image_ids = [item["image_id"] for item in items_response.json()["items"]]
+        create_response = client.post("/api/recognition/batches", json={"image_ids": image_ids})
+
+    assert items_response.status_code == 200
+    assert image_ids == ["retry-failed-image"]
+    assert create_response.status_code == 202
+    created = create_response.json()
+    assert created["total"] == 1
+    assert created["pending"] == 1
+    assert created["status"] == "queued"
+
+
 def test_post_recognition_batch_enqueues_and_get_returns_progress(api_client: TestClient):
     image_id = api_client.get("/api/images").json()["items"][0]["id"]
 
@@ -647,7 +872,18 @@ def test_post_recognition_batch_enqueues_and_get_returns_progress(api_client: Te
 
     assert create_response.status_code == 202
     created = create_response.json()
-    assert set(created) == {"batch_id", "total", "completed", "failed", "pending", "running", "cancelled", "status"}
+    assert set(created) == {
+        "batch_id",
+        "total",
+        "completed",
+        "failed",
+        "pending",
+        "running",
+        "cancelled",
+        "status",
+        "created_at",
+        "updated_at",
+    }
     assert created["total"] == 1
     assert created["completed"] == 0
     assert created["failed"] == 0

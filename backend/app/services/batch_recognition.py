@@ -5,11 +5,17 @@ from datetime import UTC, datetime
 from time import sleep
 from typing import Protocol
 
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, joinedload, selectinload, sessionmaker
 
 from app.database import SessionLocal
-from app.models import RecognitionBatch, RecognitionBatchItem
-from app.schemas import RecognitionBatchResponse
+from app.models import Image, RecognitionBatch, RecognitionBatchItem
+from app.schemas import (
+    RecognitionBatchItemImage,
+    RecognitionBatchItemList,
+    RecognitionBatchItemResponse,
+    RecognitionBatchList,
+    RecognitionBatchResponse,
+)
 from app.services.recognition import RecognitionService
 
 logger = logging.getLogger(__name__)
@@ -78,20 +84,64 @@ class BatchRecognitionService:
 
     def get_batch_progress(self, db: Session, batch_id: str) -> RecognitionBatchResponse:
         batch = self._get_batch_or_raise(db, batch_id)
-        completed = sum(1 for item in batch.items if item.status == ITEM_STATUS_COMPLETED)
-        failed = sum(1 for item in batch.items if item.status == ITEM_STATUS_FAILED)
-        running = sum(1 for item in batch.items if item.status == ITEM_STATUS_RUNNING)
-        cancelled = sum(1 for item in batch.items if item.status == ITEM_STATUS_CANCELLED)
-        pending = sum(1 for item in batch.items if item.status == ITEM_STATUS_QUEUED)
-        return RecognitionBatchResponse(
-            batch_id=batch.id,
-            total=batch.total,
-            completed=completed,
-            failed=failed,
-            pending=pending,
-            running=running,
-            cancelled=cancelled,
-            status=batch.status,
+        return self._batch_response(batch)
+
+    def list_batches(self, db: Session, page: int, size: int) -> RecognitionBatchList:
+        query = db.query(RecognitionBatch)
+        total = query.count()
+        batches = (
+            query.options(selectinload(RecognitionBatch.items))
+            .order_by(RecognitionBatch.created_at.desc())
+            .offset((page - 1) * size)
+            .limit(size)
+            .all()
+        )
+        return RecognitionBatchList(
+            items=[self._batch_response(batch) for batch in batches],
+            total=total,
+            page=page,
+            size=size,
+        )
+
+    def list_batch_items(
+        self,
+        db: Session,
+        batch_id: str,
+        page: int,
+        size: int,
+        status: str | None = None,
+    ) -> RecognitionBatchItemList:
+        self._get_batch_or_raise(db, batch_id)
+        query = db.query(RecognitionBatchItem).filter(RecognitionBatchItem.batch_id == batch_id)
+        if status is not None:
+            query = query.filter(RecognitionBatchItem.status == status)
+        total = query.count()
+        items = (
+            query.options(joinedload(RecognitionBatchItem.image).joinedload(Image.annotation))
+            .order_by(RecognitionBatchItem.id.asc())
+            .offset((page - 1) * size)
+            .limit(size)
+            .all()
+        )
+        return RecognitionBatchItemList(
+            items=[
+                RecognitionBatchItemResponse(
+                    id=item.id,
+                    image_id=item.image_id,
+                    status=item.status,
+                    error=item.error,
+                    image=RecognitionBatchItemImage(
+                        id=item.image.id,
+                        file_path=item.image.file_path,
+                        caption=item.image.annotation.caption if item.image.annotation else "",
+                        image_url=f"/api/images/{item.image.id}/file",
+                    ),
+                )
+                for item in items
+            ],
+            total=total,
+            page=page,
+            size=size,
         )
 
     def pause_batch(self, db: Session, batch_id: str) -> RecognitionBatch:
@@ -242,6 +292,30 @@ class BatchRecognitionService:
         if batch is None:
             raise BatchNotFoundError(f"Batch not found: {batch_id}")
         return batch
+
+    def _batch_response(self, batch: RecognitionBatch) -> RecognitionBatchResponse:
+        completed = sum(1 for item in batch.items if item.status == ITEM_STATUS_COMPLETED)
+        failed = sum(1 for item in batch.items if item.status == ITEM_STATUS_FAILED)
+        running = sum(1 for item in batch.items if item.status == ITEM_STATUS_RUNNING)
+        cancelled = sum(1 for item in batch.items if item.status == ITEM_STATUS_CANCELLED)
+        pending = sum(1 for item in batch.items if item.status == ITEM_STATUS_QUEUED)
+        return RecognitionBatchResponse(
+            batch_id=batch.id,
+            total=batch.total,
+            completed=completed,
+            failed=failed,
+            pending=pending,
+            running=running,
+            cancelled=cancelled,
+            status=batch.status,
+            created_at=self._as_utc(batch.created_at),
+            updated_at=self._as_utc(batch.updated_at),
+        )
+
+    def _as_utc(self, value: datetime | None) -> datetime | None:
+        if value is None or value.tzinfo is not None:
+            return value
+        return value.replace(tzinfo=UTC)
 
     def _sync_batch_counters(self, batch: RecognitionBatch) -> None:
         batch.completed = sum(1 for item in batch.items if item.status == ITEM_STATUS_COMPLETED)

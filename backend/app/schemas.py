@@ -59,6 +59,37 @@ class RecognitionBatchResponse(BaseModel):
     running: int
     cancelled: int = 0
     status: str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class RecognitionBatchList(BaseModel):
+    items: list[RecognitionBatchResponse]
+    total: int
+    page: int
+    size: int
+
+
+class RecognitionBatchItemImage(BaseModel):
+    id: str
+    file_path: str
+    caption: str
+    image_url: str
+
+
+class RecognitionBatchItemResponse(BaseModel):
+    id: int
+    image_id: str
+    status: str
+    error: str | None = None
+    image: RecognitionBatchItemImage
+
+
+class RecognitionBatchItemList(BaseModel):
+    items: list[RecognitionBatchItemResponse]
+    total: int
+    page: int
+    size: int
 
 
 class StatsResponse(BaseModel):

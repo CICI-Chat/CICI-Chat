@@ -2,6 +2,9 @@ from pathlib import Path
 
 
 GALLERY_SOURCE = Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages" / "Gallery.tsx"
+API_CLIENT_SOURCE = Path(__file__).resolve().parents[2] / "frontend" / "src" / "api" / "client.ts"
+APP_SOURCE = Path(__file__).resolve().parents[2] / "frontend" / "src" / "App.tsx"
+BATCH_HISTORY_SOURCE = Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages" / "BatchHistory.tsx"
 
 
 def test_gallery_supports_loading_more_pages():
@@ -34,3 +37,44 @@ def test_gallery_restores_and_controls_background_recognition_batches():
     assert "取消" in source
     assert "cancelled" in source
     assert "最多 200 张" not in source
+
+
+def test_api_client_supports_batch_history_endpoints():
+    source = API_CLIENT_SOURCE.read_text(encoding="utf-8")
+
+    assert "export type RecognitionBatchList" in source
+    assert "export type RecognitionBatchItemImage" in source
+    assert "export type RecognitionBatchItem" in source
+    assert "export type RecognitionBatchItemList" in source
+    assert "created_at?: string" in source
+    assert "updated_at?: string" in source
+    assert "listRecognitionBatches" in source
+    assert "listRecognitionBatchItems" in source
+    assert "status=failed" not in source
+    assert "searchParams.set('status', params.status)" in source
+
+
+def test_batch_history_page_source_contains_required_behaviors():
+    source = BATCH_HISTORY_SOURCE.read_text(encoding="utf-8")
+
+    assert "批次历史" in source
+    assert "api.listRecognitionBatches" in source
+    assert "api.listRecognitionBatchItems" in source
+    assert "status: 'failed'" in source
+    assert "重新识别失败项" in source
+    assert "api.createRecognitionBatch" in source
+    assert "已创建新的识别批次" in source
+    assert "这个批次没有失败图片" in source
+    assert "failedItems.items.map" in source
+    assert "item.image.image_url" in source
+    assert "item.image.file_path" in source
+    assert "item.error" in source
+
+
+def test_app_navigation_includes_batch_history_page():
+    source = APP_SOURCE.read_text(encoding="utf-8")
+
+    assert "import BatchHistory from './pages/BatchHistory'" in source
+    assert "batchHistory" in source
+    assert "批次历史" in source
+    assert "<BatchHistory />" in source

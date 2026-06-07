@@ -345,3 +345,77 @@ def test_recover_interrupted_batches_keeps_paused_batches_paused(db_session):
     service.recover_interrupted_batches()
 
     assert service.get_batch_progress(db_session, "batch-paused").status == "paused"
+
+
+def test_list_batches_returns_newest_first_with_pagination(db_session):
+    for image_id in ["image-1", "image-2", "image-3"]:
+        add_image(db_session, image_id)
+    older = RecognitionBatch(
+        id="batch-older",
+        status="completed",
+        total=1,
+        created_at=datetime(2026, 6, 5, 12, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 6, 5, 12, 0, tzinfo=UTC),
+    )
+    middle = RecognitionBatch(
+        id="batch-middle",
+        status="failed",
+        total=1,
+        created_at=datetime(2026, 6, 6, 12, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 6, 6, 12, 0, tzinfo=UTC),
+    )
+    newer = RecognitionBatch(
+        id="batch-newer",
+        status="running",
+        total=1,
+        created_at=datetime(2026, 6, 7, 12, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 6, 7, 12, 0, tzinfo=UTC),
+    )
+    older.items = [RecognitionBatchItem(image_id="image-1", status="completed")]
+    middle.items = [RecognitionBatchItem(image_id="image-2", status="failed", error="boom")]
+    newer.items = [RecognitionBatchItem(image_id="image-3", status="running")]
+    db_session.add_all([older, middle, newer])
+    db_session.commit()
+
+    result = BatchRecognitionService().list_batches(db_session, page=1, size=2)
+
+    assert result.total == 3
+    assert result.page == 1
+    assert result.size == 2
+    assert [batch.batch_id for batch in result.items] == ["batch-newer", "batch-middle"]
+    assert result.items[0].created_at == datetime(2026, 6, 7, 12, 0, tzinfo=UTC)
+    assert result.items[0].updated_at == datetime(2026, 6, 7, 12, 0, tzinfo=UTC)
+
+
+def test_list_batch_items_filters_failed_and_includes_image_details(db_session):
+    add_image(db_session, "image-failed")
+    add_image(db_session, "image-completed")
+    batch = RecognitionBatch(id="batch-items", status="failed", total=2)
+    failed_item = RecognitionBatchItem(image_id="image-failed", status="failed", error="missing file")
+    batch.items = [
+        failed_item,
+        RecognitionBatchItem(image_id="image-completed", status="completed"),
+    ]
+    db_session.add(batch)
+    db_session.commit()
+
+    result = BatchRecognitionService().list_batch_items(db_session, "batch-items", page=1, size=50, status="failed")
+
+    assert result.total == 1
+    assert result.page == 1
+    assert result.size == 50
+    assert len(result.items) == 1
+    item = result.items[0]
+    assert item.id == failed_item.id
+    assert item.image_id == "image-failed"
+    assert item.status == "failed"
+    assert item.error == "missing file"
+    assert item.image.id == "image-failed"
+    assert item.image.file_path == "/tmp/image-failed.png"
+    assert item.image.caption == ""
+    assert item.image.image_url == "/api/images/image-failed/file"
+
+
+def test_list_batch_items_raises_for_missing_batch(db_session):
+    with pytest.raises(BatchNotFoundError, match="missing-batch"):
+        BatchRecognitionService().list_batch_items(db_session, "missing-batch", page=1, size=50, status="failed")

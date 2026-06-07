@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.images import apply_image_filters, to_image_detail
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.models import Annotation, Image
-from app.schemas import ImageDetail, RecognitionBatchCreate, RecognitionBatchResponse
+from app.schemas import ImageDetail, RecognitionBatchCreate, RecognitionBatchItemList, RecognitionBatchList, RecognitionBatchResponse
 from app.services.batch_recognition import BatchNotFoundError, BatchRecognitionService, EmptyBatchError
 from app.services.recognition import ImageFileMissingError, ImageNotFoundError, RecognitionService
 
@@ -63,6 +63,31 @@ def create_recognition_batch(
     except EmptyBatchError as exc:
         raise HTTPException(status_code=400, detail="Batch must include at least one image") from exc
     return batch_service.get_batch_progress(db, batch.id)
+
+
+@router.get("/api/recognition/batches", response_model=RecognitionBatchList)
+def list_recognition_batches(
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    batch_service: BatchRecognitionService = Depends(get_batch_recognition_service),
+) -> RecognitionBatchList:
+    return batch_service.list_batches(db, page, size)
+
+
+@router.get("/api/recognition/batches/{batch_id}/items", response_model=RecognitionBatchItemList)
+def list_recognition_batch_items(
+    batch_id: str,
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=50, ge=1, le=200),
+    status: str | None = None,
+    db: Session = Depends(get_db),
+    batch_service: BatchRecognitionService = Depends(get_batch_recognition_service),
+) -> RecognitionBatchItemList:
+    try:
+        return batch_service.list_batch_items(db, batch_id, page, size, status)
+    except BatchNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Batch not found") from exc
 
 
 @router.get("/api/recognition/batches/{batch_id}", response_model=RecognitionBatchResponse)

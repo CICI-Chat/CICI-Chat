@@ -82,6 +82,48 @@ export type RecognitionBatch = {
   running: number;
   cancelled: number;
   status: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type RecognitionBatchList = {
+  items: RecognitionBatch[];
+  total: number;
+  page: number;
+  size: number;
+};
+
+export type RecognitionBatchItemImage = {
+  id: string;
+  file_path: string;
+  caption: string;
+  image_url: string;
+};
+
+export type RecognitionBatchItem = {
+  id: number;
+  image_id: string;
+  status: string;
+  error: string | null;
+  image: RecognitionBatchItemImage;
+};
+
+export type RecognitionBatchItemList = {
+  items: RecognitionBatchItem[];
+  total: number;
+  page: number;
+  size: number;
+};
+
+export type RecognitionBatchListParams = {
+  page?: number;
+  size?: number;
+};
+
+export type RecognitionBatchItemListParams = {
+  page?: number;
+  size?: number;
+  status?: string;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -116,6 +158,23 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(Array.isArray(payload) ? { image_ids: payload } : payload),
     }),
+  listRecognitionBatches: (params: RecognitionBatchListParams = {}) => {
+    const searchParams = new URLSearchParams({
+      page: String(params.page ?? 1),
+      size: String(params.size ?? 20),
+    });
+    return request<RecognitionBatchList>(`/api/recognition/batches?${searchParams}`);
+  },
+  listRecognitionBatchItems: (batchId: string, params: RecognitionBatchItemListParams = {}) => {
+    const searchParams = new URLSearchParams({
+      page: String(params.page ?? 1),
+      size: String(params.size ?? 50),
+    });
+    if (params.status) searchParams.set('status', params.status);
+    return request<RecognitionBatchItemList>(
+      `/api/recognition/batches/${encodeURIComponent(batchId)}/items?${searchParams}`,
+    );
+  },
   getRecognitionBatch: (batchId: string) =>
     request<RecognitionBatch>(`/api/recognition/batches/${encodeURIComponent(batchId)}`),
   pauseRecognitionBatch: (batchId: string) =>
