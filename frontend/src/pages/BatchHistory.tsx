@@ -3,6 +3,14 @@ import { api, RecognitionBatch, RecognitionBatchItemList, RecognitionBatchList }
 
 const pageSize = 20;
 const failedItemPageSize = 50;
+const itemStatusFilters = [
+  { value: 'all', label: '全部' },
+  { value: 'failed', label: '失败' },
+  { value: 'completed', label: '完成' },
+  { value: 'cancelled', label: '取消' },
+] as const;
+
+type ItemStatusFilter = (typeof itemStatusFilters)[number]['value'];
 
 const statusClasses: Record<string, string> = {
   queued: 'bg-blue-100 text-blue-700',
@@ -34,6 +42,7 @@ export default function BatchHistory() {
   const [page, setPage] = useState(1);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [failedItems, setFailedItems] = useState<RecognitionBatchItemList>(emptyFailedItems);
+  const [itemStatusFilter, setItemStatusFilter] = useState<ItemStatusFilter>('failed');
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [loadingFailedItems, setLoadingFailedItems] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -77,7 +86,11 @@ export default function BatchHistory() {
     setFailedItems(emptyFailedItems);
     setLoadingFailedItems(true);
     setError(null);
-    api.listRecognitionBatchItems(selectedBatchId, { page: 1, size: failedItemPageSize, status: 'failed' })
+    api.listRecognitionBatchItems(selectedBatchId, {
+      page: 1,
+      size: failedItemPageSize,
+      status: itemStatusFilter === 'all' ? undefined : itemStatusFilter,
+    })
       .then((data) => {
         if (requestId !== failedItemsRequestId.current) return;
         setFailedItems(data);
@@ -90,7 +103,7 @@ export default function BatchHistory() {
         if (requestId !== failedItemsRequestId.current) return;
         setLoadingFailedItems(false);
       });
-  }, [selectedBatchId]);
+  }, [selectedBatchId, itemStatusFilter]);
 
   const retryFailedItems = () => {
     if (failedItems.items.length === 0 || retrying) return;
@@ -181,10 +194,23 @@ export default function BatchHistory() {
         <section className="rounded-xl border bg-white p-4 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h3 className="font-semibold text-slate-900">失败图片</h3>
-              <p className="text-sm text-slate-500">仅显示当前批次前 {failedItemPageSize} 个失败项。</p>
+              <h3 className="font-semibold text-slate-900">批次图片</h3>
+              <p className="text-sm text-slate-500">仅显示当前筛选前 {failedItemPageSize} 个图片项。</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {itemStatusFilters.map((filter) => (
+                  <button
+                    key={filter.value}
+                    onClick={() => setItemStatusFilter(filter.value)}
+                    className={`rounded-full px-3 py-1 text-xs font-medium ${
+                      itemStatusFilter === filter.value ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            {failedItems.items.length > 0 && (
+            {itemStatusFilter === 'failed' && failedItems.items.length > 0 && (
               <div className="text-right">
                 <button
                   onClick={retryFailedItems}
@@ -200,10 +226,12 @@ export default function BatchHistory() {
             )}
           </div>
 
-          {loadingFailedItems && <p className="py-8 text-center text-sm text-slate-500">加载失败图片中...</p>}
+          {loadingFailedItems && <p className="py-8 text-center text-sm text-slate-500">加载图片项中...</p>}
 
           {!loadingFailedItems && failedItems.items.length === 0 && (
-            <p className="py-8 text-center text-sm text-slate-500">这个批次没有失败图片</p>
+            <p className="py-8 text-center text-sm text-slate-500">
+              {itemStatusFilter === 'all' ? '这个批次没有图片项' : `这个批次没有${itemStatusFilters.find((filter) => filter.value === itemStatusFilter)?.label}图片`}
+            </p>
           )}
 
           <div className="grid gap-4 sm:grid-cols-2">

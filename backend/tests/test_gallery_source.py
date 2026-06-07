@@ -60,11 +60,16 @@ def test_batch_history_page_source_contains_required_behaviors():
     assert "批次历史" in source
     assert "api.listRecognitionBatches" in source
     assert "api.listRecognitionBatchItems" in source
-    assert "status: 'failed'" in source
+    assert "itemStatusFilter" in source
+    assert "status: itemStatusFilter === 'all' ? undefined : itemStatusFilter" in source
+    assert "全部" in source
+    assert "失败" in source
+    assert "完成" in source
+    assert "取消" in source
     assert "重新识别失败项" in source
     assert "api.createRecognitionBatch" in source
     assert "已创建新的识别批次" in source
-    assert "这个批次没有失败图片" in source
+    assert "这个批次没有${itemStatusFilters.find" in source
     assert "failedItems.items.map" in source
     assert "item.image.image_url" in source
     assert "item.image.file_path" in source
