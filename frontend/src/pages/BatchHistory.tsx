@@ -99,7 +99,7 @@ export default function BatchHistory() {
     setMessage(null);
     setError(null);
     api.createRecognitionBatch(failedItems.items.map((item) => item.image_id))
-      .then(() => setMessage('已创建新的识别批次'))
+      .then(() => setMessage('已创建新的识别批次；如果图片本身仍无法识别，可能会再次失败'))
       .catch((err: Error) => setError(err.message))
       .finally(() => setRetrying(false));
   };
@@ -185,13 +185,18 @@ export default function BatchHistory() {
               <p className="text-sm text-slate-500">仅显示当前批次前 {failedItemPageSize} 个失败项。</p>
             </div>
             {failedItems.items.length > 0 && (
-              <button
-                onClick={retryFailedItems}
-                disabled={retrying}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-              >
-                {retrying ? '创建中...' : '重新识别失败项'}
-              </button>
+              <div className="text-right">
+                <button
+                  onClick={retryFailedItems}
+                  disabled={retrying}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+                >
+                  {retrying ? '创建中...' : '重新识别失败项'}
+                </button>
+                <p className="mt-2 max-w-xs text-xs text-slate-500">
+                  重新识别只会重新提交失败图片；如果原始失败原因未解决，图片可能仍会失败。
+                </p>
+              </div>
             )}
           </div>
 
