@@ -69,6 +69,10 @@ def test_batch_history_page_source_contains_required_behaviors():
     assert "重新识别失败项" in source
     assert "api.createRecognitionBatch" in source
     assert "已创建新的识别批次" in source
+    assert "createdBatch.batch_id" in source
+    assert "pendingBatchId" in source
+    assert "查看新批次" in source
+    assert "loadBatches(1, pendingBatchId)" in source
     assert "这个批次没有${itemStatusFilters.find" in source
     assert "failedItems.items.map" in source
     assert "item.image.image_url" in source

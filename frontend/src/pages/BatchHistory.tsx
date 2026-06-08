@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, RecognitionBatch, RecognitionBatchItemList, RecognitionBatchList } from '../api/client';
 
 const pageSize = 20;
@@ -47,21 +47,30 @@ export default function BatchHistory() {
   const [loadingFailedItems, setLoadingFailedItems] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [pendingBatchId, setPendingBatchId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const batchListRequestId = useRef(0);
+  const preferredBatchIdRef = useRef<string | null>(null);
   const failedItemsRequestId = useRef(0);
 
-  useEffect(() => {
+  const loadBatches = useCallback((nextPage: number, preferredBatchId?: string) => {
     const requestId = batchListRequestId.current + 1;
     batchListRequestId.current = requestId;
+    if (preferredBatchId) preferredBatchIdRef.current = preferredBatchId;
     setLoadingBatches(true);
     setError(null);
-    api.listRecognitionBatches({ page, size: pageSize })
+    api.listRecognitionBatches({ page: nextPage, size: pageSize })
       .then((data) => {
         if (requestId !== batchListRequestId.current) return;
+        const batchIdToSelect = preferredBatchIdRef.current;
         setBatches(data);
-        setSelectedBatchId(data.items[0]?.batch_id ?? null);
+        setSelectedBatchId(batchIdToSelect ?? data.items[0]?.batch_id ?? null);
         setFailedItems(emptyFailedItems);
+        if (batchIdToSelect) {
+          preferredBatchIdRef.current = null;
+          setPendingBatchId(null);
+          setMessage(null);
+        }
       })
       .catch((err: Error) => {
         if (requestId !== batchListRequestId.current) return;
@@ -71,7 +80,11 @@ export default function BatchHistory() {
         if (requestId !== batchListRequestId.current) return;
         setLoadingBatches(false);
       });
-  }, [page]);
+  }, []);
+
+  useEffect(() => {
+    loadBatches(page);
+  }, [loadBatches, page]);
 
   useEffect(() => {
     const requestId = failedItemsRequestId.current + 1;
@@ -112,9 +125,19 @@ export default function BatchHistory() {
     setMessage(null);
     setError(null);
     api.createRecognitionBatch(failedItems.items.map((item) => item.image_id))
-      .then(() => setMessage('已创建新的识别批次；如果图片本身仍无法识别，可能会再次失败'))
+      .then((createdBatch) => {
+        setPendingBatchId(createdBatch.batch_id);
+        setMessage('已创建新的识别批次；如果图片本身仍无法识别，可能会再次失败');
+      })
       .catch((err: Error) => setError(err.message))
       .finally(() => setRetrying(false));
+  };
+
+  const viewPendingBatch = () => {
+    if (!pendingBatchId) return;
+    loadBatches(1, pendingBatchId);
+    setPage(1);
+    setSelectedBatchId(pendingBatchId);
   };
 
   const totalPages = Math.max(1, Math.ceil(batches.total / pageSize));
@@ -127,7 +150,16 @@ export default function BatchHistory() {
       </div>
 
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-      {message && <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div>}
+      {message && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          <span>{message}</span>
+          {pendingBatchId && (
+            <button onClick={viewPendingBatch} className="rounded-md bg-green-700 px-3 py-1 text-white">
+              查看新批次
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
         <section className="rounded-xl border bg-white p-4 shadow-sm">
