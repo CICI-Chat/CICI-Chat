@@ -61,7 +61,7 @@ def test_batch_history_page_source_contains_required_behaviors():
     assert "api.listRecognitionBatches" in source
     assert "api.listRecognitionBatchItems" in source
     assert "itemStatusFilter" in source
-    assert "status: itemStatusFilter === 'all' ? undefined : itemStatusFilter" in source
+    assert "status: statusFilter === 'all' ? undefined : statusFilter" in source
     assert "全部" in source
     assert "失败" in source
     assert "完成" in source
@@ -73,6 +73,12 @@ def test_batch_history_page_source_contains_required_behaviors():
     assert "pendingBatchId" in source
     assert "查看新批次" in source
     assert "loadBatches(1, pendingBatchId)" in source
+    assert "刷新" in source
+    assert "refreshBatchHistory" in source
+    assert "refreshCurrentBatchItems" in source
+    assert "activeBatchStatuses.includes" in source
+    assert "window.setInterval" in source
+    assert "window.clearInterval" in source
     assert "这个批次没有${itemStatusFilters.find" in source
     assert "failedItems.items.map" in source
     assert "item.image.image_url" in source

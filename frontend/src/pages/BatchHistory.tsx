@@ -3,6 +3,7 @@ import { api, RecognitionBatch, RecognitionBatchItemList, RecognitionBatchList }
 
 const pageSize = 20;
 const failedItemPageSize = 50;
+const activeBatchStatuses = ['queued', 'running', 'paused'];
 const itemStatusFilters = [
   { value: 'all', label: '全部' },
   { value: 'failed', label: '失败' },
@@ -50,8 +51,13 @@ export default function BatchHistory() {
   const [pendingBatchId, setPendingBatchId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const batchListRequestId = useRef(0);
+  const selectedBatchIdRef = useRef<string | null>(null);
   const preferredBatchIdRef = useRef<string | null>(null);
   const failedItemsRequestId = useRef(0);
+
+  useEffect(() => {
+    selectedBatchIdRef.current = selectedBatchId;
+  }, [selectedBatchId]);
 
   const loadBatches = useCallback((nextPage: number, preferredBatchId?: string) => {
     const requestId = batchListRequestId.current + 1;
@@ -62,11 +68,13 @@ export default function BatchHistory() {
     api.listRecognitionBatches({ page: nextPage, size: pageSize })
       .then((data) => {
         if (requestId !== batchListRequestId.current) return;
-        const batchIdToSelect = preferredBatchIdRef.current;
+        const currentBatchId = selectedBatchIdRef.current;
+        const preferredBatchId = preferredBatchIdRef.current;
+        const batchIdToSelect = preferredBatchId ?? (data.items.some((batch) => batch.batch_id === currentBatchId) ? currentBatchId : data.items[0]?.batch_id ?? null);
         setBatches(data);
-        setSelectedBatchId(batchIdToSelect ?? data.items[0]?.batch_id ?? null);
-        setFailedItems(emptyFailedItems);
-        if (batchIdToSelect) {
+        setSelectedBatchId(batchIdToSelect);
+        if (batchIdToSelect !== currentBatchId) setFailedItems(emptyFailedItems);
+        if (preferredBatchId) {
           preferredBatchIdRef.current = null;
           setPendingBatchId(null);
           setMessage(null);
@@ -86,11 +94,11 @@ export default function BatchHistory() {
     loadBatches(page);
   }, [loadBatches, page]);
 
-  useEffect(() => {
+  const refreshCurrentBatchItems = useCallback((batchId: string | null, statusFilter: ItemStatusFilter) => {
     const requestId = failedItemsRequestId.current + 1;
     failedItemsRequestId.current = requestId;
 
-    if (!selectedBatchId) {
+    if (!batchId) {
       setFailedItems(emptyFailedItems);
       setLoadingFailedItems(false);
       return;
@@ -99,10 +107,10 @@ export default function BatchHistory() {
     setFailedItems(emptyFailedItems);
     setLoadingFailedItems(true);
     setError(null);
-    api.listRecognitionBatchItems(selectedBatchId, {
+    api.listRecognitionBatchItems(batchId, {
       page: 1,
       size: failedItemPageSize,
-      status: itemStatusFilter === 'all' ? undefined : itemStatusFilter,
+      status: statusFilter === 'all' ? undefined : statusFilter,
     })
       .then((data) => {
         if (requestId !== failedItemsRequestId.current) return;
@@ -116,7 +124,11 @@ export default function BatchHistory() {
         if (requestId !== failedItemsRequestId.current) return;
         setLoadingFailedItems(false);
       });
-  }, [selectedBatchId, itemStatusFilter]);
+  }, []);
+
+  useEffect(() => {
+    refreshCurrentBatchItems(selectedBatchId, itemStatusFilter);
+  }, [refreshCurrentBatchItems, selectedBatchId, itemStatusFilter]);
 
   const retryFailedItems = () => {
     if (failedItems.items.length === 0 || retrying) return;
@@ -139,6 +151,23 @@ export default function BatchHistory() {
     setPage(1);
     setSelectedBatchId(pendingBatchId);
   };
+
+  const refreshBatchHistory = useCallback(() => {
+    loadBatches(page, selectedBatchId ?? undefined);
+    refreshCurrentBatchItems(selectedBatchId, itemStatusFilter);
+  }, [itemStatusFilter, loadBatches, page, refreshCurrentBatchItems, selectedBatchId]);
+
+  const selectedBatch = batches.items.find((batch) => batch.batch_id === selectedBatchId);
+
+  useEffect(() => {
+    if (!selectedBatch || !activeBatchStatuses.includes(selectedBatch.status)) return;
+
+    const intervalId = window.setInterval(() => {
+      refreshBatchHistory();
+    }, 3000);
+
+    return () => window.clearInterval(intervalId);
+  }, [refreshBatchHistory, selectedBatch]);
 
   const totalPages = Math.max(1, Math.ceil(batches.total / pageSize));
 
@@ -163,9 +192,14 @@ export default function BatchHistory() {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
         <section className="rounded-xl border bg-white p-4 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex items-center justify-between gap-3">
             <h3 className="font-semibold text-slate-900">识别批次</h3>
-            {loadingBatches && <span className="text-sm text-slate-500">加载中...</span>}
+            <div className="flex items-center gap-3">
+              {loadingBatches && <span className="text-sm text-slate-500">加载中...</span>}
+              <button onClick={refreshBatchHistory} className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700 hover:bg-slate-200">
+                刷新
+              </button>
+            </div>
           </div>
 
           <div className="space-y-3">
