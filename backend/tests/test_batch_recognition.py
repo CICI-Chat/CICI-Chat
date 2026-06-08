@@ -387,6 +387,22 @@ def test_list_batches_returns_newest_first_with_pagination(db_session):
     assert result.items[0].updated_at == datetime(2026, 6, 7, 12, 0, tzinfo=UTC)
 
 
+def test_list_batches_filters_by_status(db_session):
+    add_image(db_session, "image-running")
+    add_image(db_session, "image-failed")
+    running = RecognitionBatch(id="batch-running", status="running", total=1, created_at=datetime(2026, 6, 7, 12, 0, tzinfo=UTC))
+    failed = RecognitionBatch(id="batch-failed", status="failed", total=1, created_at=datetime(2026, 6, 8, 12, 0, tzinfo=UTC))
+    running.items = [RecognitionBatchItem(image_id="image-running", status="running")]
+    failed.items = [RecognitionBatchItem(image_id="image-failed", status="failed")]
+    db_session.add_all([running, failed])
+    db_session.commit()
+
+    result = BatchRecognitionService().list_batches(db_session, page=1, size=20, status="failed")
+
+    assert result.total == 1
+    assert [batch.batch_id for batch in result.items] == ["batch-failed"]
+
+
 def test_list_batch_items_filters_failed_and_includes_image_details(db_session):
     add_image(db_session, "image-failed")
     add_image(db_session, "image-completed")
@@ -410,10 +426,26 @@ def test_list_batch_items_filters_failed_and_includes_image_details(db_session):
     assert item.image_id == "image-failed"
     assert item.status == "failed"
     assert item.error == "missing file"
+    assert item.failure_category == "file_missing"
+    assert "修复文件路径" in item.failure_hint
     assert item.image.id == "image-failed"
     assert item.image.file_path == "/tmp/image-failed.png"
     assert item.image.caption == ""
     assert item.image.image_url == "/api/images/image-failed/file"
+
+
+def test_list_batch_items_classifies_missing_api_key_as_configuration(db_session):
+    add_image(db_session, "image-config-failed")
+    batch = RecognitionBatch(id="batch-config-failed", status="failed", total=1)
+    batch.items = [RecognitionBatchItem(image_id="image-config-failed", status="failed", error="missing API key")]
+    db_session.add(batch)
+    db_session.commit()
+
+    result = BatchRecognitionService().list_batch_items(db_session, "batch-config-failed", page=1, size=50, status="failed")
+
+    item = result.items[0]
+    assert item.failure_category == "configuration"
+    assert "密钥" in item.failure_hint
 
 
 def test_list_batch_items_raises_for_missing_batch(db_session):

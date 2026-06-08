@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload, sessionmaker
 from app.database import SessionLocal
 from app.models import Image, RecognitionBatch, RecognitionBatchItem
 from app.schemas import (
+    FailureCategory,
     RecognitionBatchItemImage,
     RecognitionBatchItemList,
     RecognitionBatchItemResponse,
@@ -86,8 +87,10 @@ class BatchRecognitionService:
         batch = self._get_batch_or_raise(db, batch_id)
         return self._batch_response(batch)
 
-    def list_batches(self, db: Session, page: int, size: int) -> RecognitionBatchList:
+    def list_batches(self, db: Session, page: int, size: int, status: str | None = None) -> RecognitionBatchList:
         query = db.query(RecognitionBatch)
+        if status is not None:
+            query = query.filter(RecognitionBatch.status == status)
         total = query.count()
         batches = (
             query.options(selectinload(RecognitionBatch.items))
@@ -123,13 +126,17 @@ class BatchRecognitionService:
             .limit(size)
             .all()
         )
-        return RecognitionBatchItemList(
-            items=[
+        responses = []
+        for item in items:
+            failure_category = self._failure_category(item.error)
+            responses.append(
                 RecognitionBatchItemResponse(
                     id=item.id,
                     image_id=item.image_id,
                     status=item.status,
                     error=item.error,
+                    failure_category=failure_category,
+                    failure_hint=self._failure_hint(failure_category),
                     image=RecognitionBatchItemImage(
                         id=item.image.id,
                         file_path=item.image.file_path,
@@ -137,8 +144,9 @@ class BatchRecognitionService:
                         image_url=f"/api/images/{item.image.id}/file",
                     ),
                 )
-                for item in items
-            ],
+            )
+        return RecognitionBatchItemList(
+            items=responses,
             total=total,
             page=page,
             size=size,
@@ -316,6 +324,32 @@ class BatchRecognitionService:
         if value is None or value.tzinfo is not None:
             return value
         return value.replace(tzinfo=UTC)
+
+    def _failure_category(self, error: str | None) -> FailureCategory | None:
+        if not error:
+            return None
+        error_text = error.lower()
+        normalized_error = error_text.replace("_", " ").replace("-", "")
+        if "provider" in error_text or "api key" in normalized_error or "apikey" in normalized_error or "configuration" in error_text:
+            return "configuration"
+        if "file" in error_text and ("missing" in error_text or "not found" in error_text):
+            return "file_missing"
+        if "no such file" in error_text:
+            return "file_missing"
+        if "model" in error_text or "recognition" in error_text:
+            return "recognition_failed"
+        return "unknown"
+
+    def _failure_hint(self, category: FailureCategory | None) -> str | None:
+        if category == "file_missing":
+            return "文件路径失效，可以先修复文件路径或重新索引后再重试。"
+        if category == "configuration":
+            return "识别服务配置可能有问题，请检查模型提供方和密钥设置。"
+        if category == "recognition_failed":
+            return "模型识别失败，可以重试；如果反复失败，可能是图片内容或模型限制。"
+        if category == "unknown":
+            return "未知错误，可以重试；如果反复失败，请查看原始错误。"
+        return None
 
     def _sync_batch_counters(self, batch: RecognitionBatch) -> None:
         batch.completed = sum(1 for item in batch.items if item.status == ITEM_STATUS_COMPLETED)

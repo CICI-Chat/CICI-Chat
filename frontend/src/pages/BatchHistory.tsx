@@ -4,6 +4,13 @@ import { api, RecognitionBatch, RecognitionBatchItemList, RecognitionBatchList }
 const pageSize = 20;
 const failedItemPageSize = 50;
 const activeBatchStatuses = ['queued', 'running', 'paused'];
+const batchStatusFilters = [
+  { value: 'all', label: '全部' },
+  { value: 'running', label: '运行中' },
+  { value: 'completed', label: '已完成' },
+  { value: 'failed', label: '失败' },
+  { value: 'cancelled', label: '已取消' },
+] as const;
 const itemStatusFilters = [
   { value: 'all', label: '全部' },
   { value: 'failed', label: '失败' },
@@ -11,6 +18,7 @@ const itemStatusFilters = [
   { value: 'cancelled', label: '取消' },
 ] as const;
 
+type BatchStatusFilter = (typeof batchStatusFilters)[number]['value'];
 type ItemStatusFilter = (typeof itemStatusFilters)[number]['value'];
 
 const statusClasses: Record<string, string> = {
@@ -38,11 +46,25 @@ function statusClass(status: string) {
   return statusClasses[status] ?? 'bg-slate-100 text-slate-700';
 }
 
+function failureCategoryLabel(category?: string | null) {
+  if (category === 'file_missing') return '文件路径失效';
+  if (category === 'configuration') return '服务配置问题';
+  if (category === 'recognition_failed') return '模型识别失败';
+  return '未知错误';
+}
+
+function failureHint(item: { failure_category?: string | null; failure_hint?: string | null }) {
+  if (item.failure_hint) return item.failure_hint;
+  if (item.failure_category === 'file_missing') return '可以先修复文件路径或重新索引后再重试。';
+  return null;
+}
+
 export default function BatchHistory() {
   const [batches, setBatches] = useState<RecognitionBatchList>({ items: [], total: 0, page: 1, size: pageSize });
   const [page, setPage] = useState(1);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [failedItems, setFailedItems] = useState<RecognitionBatchItemList>(emptyFailedItems);
+  const [batchStatusFilter, setBatchStatusFilter] = useState<BatchStatusFilter>('all');
   const [itemStatusFilter, setItemStatusFilter] = useState<ItemStatusFilter>('failed');
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [loadingFailedItems, setLoadingFailedItems] = useState(false);
@@ -65,7 +87,7 @@ export default function BatchHistory() {
     if (preferredBatchId) preferredBatchIdRef.current = preferredBatchId;
     setLoadingBatches(true);
     setError(null);
-    api.listRecognitionBatches({ page: nextPage, size: pageSize })
+    api.listRecognitionBatches({ page: nextPage, size: pageSize, status: batchStatusFilter === 'all' ? undefined : batchStatusFilter })
       .then((data) => {
         if (requestId !== batchListRequestId.current) return;
         const currentBatchId = selectedBatchIdRef.current;
@@ -88,7 +110,7 @@ export default function BatchHistory() {
         if (requestId !== batchListRequestId.current) return;
         setLoadingBatches(false);
       });
-  }, []);
+  }, [batchStatusFilter]);
 
   useEffect(() => {
     loadBatches(page);
@@ -147,9 +169,11 @@ export default function BatchHistory() {
 
   const viewPendingBatch = () => {
     if (!pendingBatchId) return;
-    loadBatches(1, pendingBatchId);
+    setBatchStatusFilter('all');
+    preferredBatchIdRef.current = pendingBatchId;
     setPage(1);
     setSelectedBatchId(pendingBatchId);
+    if (batchStatusFilter === 'all') loadBatches(1, pendingBatchId);
   };
 
   const refreshBatchHistory = useCallback(() => {
@@ -200,6 +224,24 @@ export default function BatchHistory() {
                 刷新
               </button>
             </div>
+          </div>
+
+          <div className="mb-4 flex flex-wrap gap-2">
+            {batchStatusFilters.map((filter) => (
+              <button
+                key={filter.value}
+                onClick={() => {
+                  setBatchStatusFilter(filter.value);
+                  setPage(1);
+                  setMessage(null);
+                }}
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  batchStatusFilter === filter.value ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {filter.label}
+              </button>
+            ))}
           </div>
 
           <div className="space-y-3">
@@ -301,16 +343,25 @@ export default function BatchHistory() {
           )}
 
           <div className="grid gap-4 sm:grid-cols-2">
-            {failedItems.items.map((item) => (
-              <article key={item.id} className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                <img src={item.image.image_url} alt={item.image.file_path} className="h-36 w-full object-cover" />
-                <div className="space-y-2 p-3">
-                  <p className="break-all text-sm font-medium text-slate-900">{item.image.file_path}</p>
-                  <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${statusClass(item.status)}`}>{item.status}</span>
-                  {item.error && <p className="break-all text-xs text-red-600">{item.error}</p>}
-                </div>
-              </article>
-            ))}
+            {failedItems.items.map((item) => {
+              const hint = failureHint(item);
+              return (
+                <article key={item.id} className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                  <img src={item.image.image_url} alt={item.image.file_path} className="h-36 w-full object-cover" />
+                  <div className="space-y-2 p-3">
+                    <p className="break-all text-sm font-medium text-slate-900">{item.image.file_path}</p>
+                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${statusClass(item.status)}`}>{item.status}</span>
+                    {item.error && (
+                      <div className="space-y-1 rounded-md bg-red-50 p-2 text-xs text-red-700">
+                        <p className="font-medium">{failureCategoryLabel(item.failure_category)}</p>
+                        {hint && <p>{hint}</p>}
+                        <p className="break-all text-red-600">{item.error}</p>
+                      </div>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
       </div>

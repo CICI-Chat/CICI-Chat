@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
@@ -69,10 +71,11 @@ def create_recognition_batch(
 def list_recognition_batches(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=20, ge=1, le=100),
+    status: Literal["queued", "running", "paused", "cancelled", "completed", "failed"] | None = None,
     db: Session = Depends(get_db),
     batch_service: BatchRecognitionService = Depends(get_batch_recognition_service),
 ) -> RecognitionBatchList:
-    return batch_service.list_batches(db, page, size)
+    return batch_service.list_batches(db, page, size, status)
 
 
 @router.get("/api/recognition/batches/{batch_id}/items", response_model=RecognitionBatchItemList)

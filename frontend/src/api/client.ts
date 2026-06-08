@@ -100,11 +100,15 @@ export type RecognitionBatchItemImage = {
   image_url: string;
 };
 
+export type RecognitionFailureCategory = 'file_missing' | 'configuration' | 'recognition_failed' | 'unknown';
+
 export type RecognitionBatchItem = {
   id: number;
   image_id: string;
   status: string;
   error: string | null;
+  failure_category?: RecognitionFailureCategory | null;
+  failure_hint?: string | null;
   image: RecognitionBatchItemImage;
 };
 
@@ -118,6 +122,7 @@ export type RecognitionBatchItemList = {
 export type RecognitionBatchListParams = {
   page?: number;
   size?: number;
+  status?: string;
 };
 
 export type RecognitionBatchItemListParams = {
@@ -163,6 +168,7 @@ export const api = {
       page: String(params.page ?? 1),
       size: String(params.size ?? 20),
     });
+    if (params.status) searchParams.set('status', params.status);
     return request<RecognitionBatchList>(`/api/recognition/batches?${searchParams}`);
   },
   listRecognitionBatchItems: (batchId: string, params: RecognitionBatchItemListParams = {}) => {

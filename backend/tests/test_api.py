@@ -733,6 +733,34 @@ def test_get_recognition_batches_returns_history_newest_first(tmp_path: Path, mo
     assert body["items"][0]["created_at"].startswith("2026-06-07T12:00:00")
 
 
+def test_get_recognition_batches_filters_by_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    now = datetime(2026, 6, 7, 12, 0, tzinfo=UTC)
+    image_1 = Image(id="status-image-1", file_path="/tmp/status-image-1.png", file_hash="status-hash-1", file_size=100, width=32, height=24, format="PNG", created_at=now, modified_at=now, indexed_at=now)
+    image_2 = Image(id="status-image-2", file_path="/tmp/status-image-2.png", file_hash="status-hash-2", file_size=100, width=32, height=24, format="PNG", created_at=now, modified_at=now, indexed_at=now)
+    completed = RecognitionBatch(id="api-batch-completed", status="completed", total=1, created_at=datetime(2026, 6, 5, 12, 0, tzinfo=UTC))
+    failed = RecognitionBatch(id="api-batch-failed", status="failed", total=1, created_at=datetime(2026, 6, 7, 12, 0, tzinfo=UTC))
+    completed.items = [RecognitionBatchItem(image_id="status-image-1", status="completed")]
+    failed.items = [RecognitionBatchItem(image_id="status-image-2", status="failed")]
+
+    with make_api_db_client(tmp_path, monkeypatch) as (client, db_session):
+        db_session.add_all([image_1, image_2, completed, failed])
+        db_session.commit()
+
+        response = client.get("/api/recognition/batches", params={"page": 1, "size": 20, "status": "failed"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert [item["batch_id"] for item in body["items"]] == ["api-batch-failed"]
+
+
+def test_get_recognition_batches_rejects_unknown_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    with make_api_db_client(tmp_path, monkeypatch) as (client, _db_session):
+        response = client.get("/api/recognition/batches", params={"status": "unknown"})
+
+    assert response.status_code == 422
+
+
 def test_get_recognition_batch_items_filters_failed_and_returns_image(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     now = datetime(2026, 6, 7, 12, 0, tzinfo=UTC)
     failed_image = Image(
@@ -797,6 +825,8 @@ def test_get_recognition_batch_items_filters_failed_and_returns_image(tmp_path: 
     assert item["image_id"] == "api-item-failed"
     assert item["status"] == "failed"
     assert item["error"] == "missing file"
+    assert item["failure_category"] == "file_missing"
+    assert "修复文件路径" in item["failure_hint"]
     assert item["image"] == {
         "id": "api-item-failed",
         "file_path": "/tmp/api-item-failed.png",

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -70,6 +71,9 @@ class RecognitionBatchList(BaseModel):
     size: int
 
 
+FailureCategory = Literal["file_missing", "configuration", "recognition_failed", "unknown"]
+
+
 class RecognitionBatchItemImage(BaseModel):
     id: str
     file_path: str
@@ -82,6 +86,8 @@ class RecognitionBatchItemResponse(BaseModel):
     image_id: str
     status: str
     error: str | None = None
+    failure_category: FailureCategory | None = None
+    failure_hint: str | None = None
     image: RecognitionBatchItemImage
 
 

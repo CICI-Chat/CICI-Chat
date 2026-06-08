@@ -51,6 +51,7 @@ def test_api_client_supports_batch_history_endpoints():
     assert "listRecognitionBatches" in source
     assert "listRecognitionBatchItems" in source
     assert "status=failed" not in source
+    assert "status?: string" in source
     assert "searchParams.set('status', params.status)" in source
 
 
@@ -59,6 +60,12 @@ def test_batch_history_page_source_contains_required_behaviors():
 
     assert "批次历史" in source
     assert "api.listRecognitionBatches" in source
+    assert "batchStatusFilter" in source
+    assert "batchStatusFilters" in source
+    assert "status: batchStatusFilter === 'all' ? undefined : batchStatusFilter" in source
+    assert "运行中" in source
+    assert "已完成" in source
+    assert "已取消" in source
     assert "api.listRecognitionBatchItems" in source
     assert "itemStatusFilter" in source
     assert "status: statusFilter === 'all' ? undefined : statusFilter" in source
@@ -84,6 +91,10 @@ def test_batch_history_page_source_contains_required_behaviors():
     assert "item.image.image_url" in source
     assert "item.image.file_path" in source
     assert "item.error" in source
+    assert "failure_category" in source
+    assert "failure_hint" in source
+    assert "文件路径失效" in source
+    assert "可以先修复文件路径" in source
 
 
 def test_app_navigation_includes_batch_history_page():
