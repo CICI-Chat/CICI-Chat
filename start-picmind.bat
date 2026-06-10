@@ -12,5 +12,7 @@ if not exist "%BACKEND_DIR%\.env" (
 start "PicMind Backend" /D "%BACKEND_DIR%" cmd /k uv run uvicorn app.main:app --reload
 start "PicMind Frontend" /D "%PROJECT_DIR%" cmd /k npm --prefix "%FRONTEND_DIR%" run dev -- --host 127.0.0.1
 
+start "" code "%PROJECT_DIR%picmind.code-workspace"
+
 timeout /t 5 /nobreak >nul
 start "" "http://localhost:5173/"
