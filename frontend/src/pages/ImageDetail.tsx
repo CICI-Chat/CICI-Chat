@@ -49,6 +49,29 @@ export default function ImageDetail({ imageId, onBack }: { imageId: string; onBa
           <div className="mt-4 flex flex-wrap gap-2">
             {image.tags.map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-3 py-1 text-sm">{tag}</span>)}
           </div>
+          {/* 检测到的物体 */}
+          {image.objects && image.objects.length > 0 ? (
+            <div className="mt-4">
+              <p className="text-sm font-medium text-slate-900">检测到的物体</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {image.objects.map((obj, idx) => {
+                  const name = (obj as Record<string, unknown>).name as string | undefined;
+                  const label = (obj as Record<string, unknown>).label as string | undefined;
+                  const confidence = (obj as Record<string, unknown>).confidence as number | undefined;
+                  if (!label) return null;
+                  const display = name && name !== label ? `${name}（${label}）` : label;
+                  const pct = typeof confidence === 'number' ? `· 置信度 ${Math.round(confidence * 100)}%` : '';
+                  return (
+                    <span key={idx} className="rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-700">
+                      {display} {pct}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-slate-400">未检测到物体</p>
+          )}
           <dl className="mt-6 space-y-2 text-sm text-slate-600">
             <div><dt className="font-medium text-slate-900">尺寸</dt><dd>{image.width} × {image.height}</dd></div>
             <div><dt className="font-medium text-slate-900">格式</dt><dd>{image.format}</dd></div>
