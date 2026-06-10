@@ -43,9 +43,13 @@ export default function Settings() {
         <p className="text-sm text-slate-500">识别 Provider</p>
         <div className="mt-3 flex flex-col gap-3 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
           <p><span className="font-medium text-slate-900">当前 Provider：</span>{settings.provider}</p>
-          <p>当前阶段使用本地 Mock 识别，用于验证图片识别、结果持久化和批量流程。</p>
-          <p>后续可将 Provider 替换为 Ollama 或云端视觉模型。</p>
-          <p className="font-medium text-amber-700">Phase 3 不支持在页面切换 Provider。</p>
+          {settings.provider === 'yolo' ? (
+            <p>使用本地 YOLO11n 模型做物体检测，识别结果包含中文物体名和置信度。</p>
+          ) : (
+            <p>当前使用本地 Mock 识别，输出基础标签、方向标签和主色标签，未做真实物体检测。</p>
+          )}
+          <p>修改 Provider 请编辑 backend/.env 中的 RECOGNITION_PROVIDER 后重启后端。</p>
+          <p className="font-medium text-amber-700">当前版本不支持在页面切换 Provider。</p>
         </div>
       </div>
     </section>
