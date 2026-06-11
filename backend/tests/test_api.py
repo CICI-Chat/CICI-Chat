@@ -19,12 +19,23 @@ def make_api_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     from app.config import Settings, get_settings
     from app.database import get_db
     from app.main import create_app
+    from app.services.annotation import MockRecognizer
+    from app.services.recognition import RecognitionService
 
     tmp_path.mkdir(parents=True, exist_ok=True)
-    test_settings = Settings(watch_folders=str(tmp_path), db_path=tmp_path / "api.db")
+    test_settings = Settings(
+        watch_folders=str(tmp_path),
+        db_path=tmp_path / "api.db",
+        recognition_provider="mock",
+    )
     monkeypatch.setattr("app.api.images.get_settings", lambda: test_settings)
     monkeypatch.setattr("app.api.reindex.get_settings", lambda: test_settings)
     monkeypatch.setattr("app.api.settings.get_settings", lambda: test_settings)
+    # 隔离 .env 中可能配置的 RECOGNITION_PROVIDER=yolo：测试统一走 mock
+    monkeypatch.setattr(
+        "app.api.recognition.recognition_service",
+        RecognitionService(recognizer=MockRecognizer()),
+    )
     app = create_app(run_startup_indexing=False, run_batch_worker=False)
 
     engine = create_engine(f"sqlite:///{tmp_path / 'api.db'}", connect_args={"check_same_thread": False})

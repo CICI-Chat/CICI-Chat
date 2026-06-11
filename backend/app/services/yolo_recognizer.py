@@ -78,12 +78,20 @@ class YoloRecognizer(Recognizer):
                 confidence = round(float(box.conf[0].item()), 4)
                 if confidence < self.confidence_threshold:
                     continue
+                # bbox：YOLO 给的是归一化 (cx, cy, w, h)，转成左上角 (x, y) + 宽高
+                cx, cy, bw, bh = (float(v) for v in box.xywhn[0].tolist())
+                x = max(0.0, cx - bw / 2)
+                y = max(0.0, cy - bh / 2)
                 name = chinese_name_for_label(label)
                 tags_set.add(name)
                 objects.append({
                     "label": label,
                     "name": name,
                     "confidence": confidence,
+                    "x": round(x, 4),
+                    "y": round(y, 4),
+                    "w": round(bw, 4),
+                    "h": round(bh, 4),
                 })
 
         objects.sort(key=lambda obj: obj["confidence"], reverse=True)

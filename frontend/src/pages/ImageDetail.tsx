@@ -32,7 +32,39 @@ export default function ImageDetail({ imageId, onBack }: { imageId: string; onBa
     <main className="mx-auto max-w-5xl px-6 py-8">
       <button onClick={onBack} className="mb-4 rounded-lg bg-slate-900 px-4 py-2 text-sm text-white">返回图库</button>
       <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
-        <img src={image.image_url} alt={image.caption} className="w-full rounded-xl bg-white object-contain shadow-sm" />
+        <div className="relative inline-block w-full">
+          <img src={image.image_url} alt={image.caption} className="block w-full rounded-xl bg-white object-contain shadow-sm" />
+          {image.objects?.map((obj, idx) => {
+            const o = obj as Record<string, unknown>;
+            const x = o.x as number | undefined;
+            const y = o.y as number | undefined;
+            const w = o.w as number | undefined;
+            const h = o.h as number | undefined;
+            if (typeof x !== 'number' || typeof y !== 'number'
+                || typeof w !== 'number' || typeof h !== 'number') {
+              return null;
+            }
+            const name = (o.name as string | undefined) ?? (o.label as string | undefined) ?? '';
+            const conf = o.confidence as number | undefined;
+            const pct = typeof conf === 'number' ? `${Math.round(conf * 100)}%` : '';
+            return (
+              <div
+                key={idx}
+                className="absolute border-2 border-red-500 pointer-events-none"
+                style={{
+                  left: `${x * 100}%`,
+                  top: `${y * 100}%`,
+                  width: `${w * 100}%`,
+                  height: `${h * 100}%`,
+                }}
+              >
+                <span className="absolute -top-6 left-0 rounded bg-red-500 px-1.5 py-0.5 text-xs text-white whitespace-nowrap">
+                  {name} {pct}
+                </span>
+              </div>
+            );
+          })}
+        </div>
         <aside className="rounded-xl bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-xl font-semibold">图片详情</h2>

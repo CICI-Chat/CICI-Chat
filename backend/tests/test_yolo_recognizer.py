@@ -10,6 +10,16 @@ from app.services.yolo_recognizer import (
 )
 
 
+class _FakeTensor:
+    """模拟 torch.Tensor 的最小子集：.tolist() 返回嵌套 list。"""
+
+    def __init__(self, data):
+        self._data = data
+
+    def tolist(self):
+        return self._data
+
+
 def _make_image_input(file_path: Path, width: int = 640, height: int = 480) -> ImageRecognitionInput:
     return ImageRecognitionInput(
         image_id="test-id",
@@ -39,16 +49,21 @@ def test_yolo_recognizer_filters_low_confidence_and_sorts(monkeypatch, tmp_path)
     recognizer = YoloRecognizer(model_path=str(model_file), confidence_threshold=0.25)
 
     class FakeBox:
-        def __init__(self, cls_idx: int, conf: float) -> None:
+        def __init__(self, cls_idx: int, conf: float, bbox: tuple[float, float, float, float] = (0.5, 0.5, 0.2, 0.4)) -> None:
             class _T:
                 def __init__(self, v): self._v = v
                 def item(self): return self._v
             self.cls = [_T(cls_idx)]
             self.conf = [_T(conf)]
+            self.xywhn = [_FakeTensor(list(bbox))]
 
     class FakeResult:
         names = {0: "person", 1: "car", 2: "dog"}
-        boxes = [FakeBox(0, 0.91), FakeBox(1, 0.84), FakeBox(2, 0.12)]
+        boxes = [
+            FakeBox(0, 0.91, bbox=(0.30, 0.40, 0.20, 0.60)),
+            FakeBox(1, 0.84, bbox=(0.70, 0.55, 0.40, 0.30)),
+            FakeBox(2, 0.12, bbox=(0.50, 0.50, 0.10, 0.10)),
+        ]
 
     def fake_call(_path, **_kwargs):
         return [FakeResult()]
@@ -72,6 +87,16 @@ def test_yolo_recognizer_filters_low_confidence_and_sorts(monkeypatch, tmp_path)
     assert "狗" not in result.tags
     assert "本地图片" in result.tags
     assert "landscape" in result.tags
+    # bbox 字段：person 的中心 (0.30, 0.40) + 宽 0.20 高 0.60 → 左上 (0.20, 0.10)
+    person = result.objects[0]
+    assert person["x"] == 0.20
+    assert person["y"] == 0.10
+    assert person["w"] == 0.20
+    assert person["h"] == 0.60
+    for field in ("x", "y", "w", "h"):
+        for obj in result.objects:
+            assert isinstance(obj[field], float)
+            assert 0.0 <= obj[field] <= 1.0
 
 
 def test_yolo_recognizer_dedupes_repeated_labels(monkeypatch, tmp_path):
@@ -89,6 +114,7 @@ def test_yolo_recognizer_dedupes_repeated_labels(monkeypatch, tmp_path):
                 def item(self): return self._v
             self.cls = [_T(cls_idx)]
             self.conf = [_T(conf)]
+            self.xywhn = [_FakeTensor([0.5, 0.5, 0.2, 0.4])]
 
     class FakeResult:
         names = {0: "person"}
