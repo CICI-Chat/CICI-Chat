@@ -12,5 +12,5 @@ def get_app_settings() -> SettingsResponse:
     return SettingsResponse(
         watch_folders=[str(path) for path in settings.watch_folder_paths],
         db_path=str(settings.db_path),
-        provider="mock",
+        provider=settings.recognition_provider,
     )

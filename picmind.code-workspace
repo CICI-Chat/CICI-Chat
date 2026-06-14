@@ -1,0 +1,14 @@
+{
+  "folders": [
+    { "name": "PicMind", "path": "." },
+    { "name": "Backend", "path": "backend" },
+    { "name": "Frontend", "path": "frontend" }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "backend/.venv/Scripts/python.exe",
+    "files.exclude": {
+      "**/__pycache__": true,
+      "**/.pytest_cache": true
+    }
+  }
+}

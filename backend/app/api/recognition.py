@@ -9,10 +9,15 @@ from app.database import get_db
 from app.models import Annotation, Image
 from app.schemas import ImageDetail, RecognitionBatchCreate, RecognitionBatchItemList, RecognitionBatchList, RecognitionBatchResponse
 from app.services.batch_recognition import BatchNotFoundError, BatchRecognitionService, EmptyBatchError
-from app.services.recognition import ImageFileMissingError, ImageNotFoundError, RecognitionService
+from app.services.recognition import (
+    ImageFileMissingError,
+    ImageNotFoundError,
+    RecognitionService,
+    build_recognizer,
+)
 
 router = APIRouter(tags=["recognition"])
-recognition_service = RecognitionService()
+recognition_service = RecognitionService(recognizer=build_recognizer(get_settings()))
 
 
 def get_batch_recognition_service(request: Request) -> BatchRecognitionService:
