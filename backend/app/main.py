@@ -1,9 +1,10 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import images, recognition, reindex, settings, stats
+from app.api import images, live, recognition, reindex, settings, stats
 from app.config import get_settings
 from app.database import SessionLocal, init_db
 from app.services.batch_recognition import BatchRecognitionService, RecognitionBatchWorker
@@ -37,6 +38,7 @@ def create_app(run_startup_indexing: bool = True, run_batch_worker: bool = True)
         recognition_service=RecognitionService(recognizer=build_recognizer(get_settings()))
     )
     app.state.batch_recognition_worker = RecognitionBatchWorker(app.state.batch_recognition_service)
+    app.state.live_lock = asyncio.Lock()
 
     app.add_middleware(
         CORSMiddleware,
@@ -51,6 +53,7 @@ def create_app(run_startup_indexing: bool = True, run_batch_worker: bool = True)
     app.include_router(settings.router)
     app.include_router(reindex.router)
     app.include_router(recognition.router)
+    app.include_router(live.router)
     return app
 
 
