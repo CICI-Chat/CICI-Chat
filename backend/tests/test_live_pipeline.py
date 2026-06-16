@@ -59,12 +59,36 @@ def test_pipeline_yields_messages_with_required_fields():
 
     msg = next(iter(pipeline))
 
-    assert set(msg.keys()) == {"ts", "jpeg_base64", "objects", "scene", "danger"}
+    # 基础字段必须存在
+    assert {"ts", "jpeg_base64", "objects", "scene", "danger", "frame", "target_offset"}.issubset(msg.keys())
     assert isinstance(msg["ts"], float)
     assert isinstance(msg["jpeg_base64"], str) and len(msg["jpeg_base64"]) > 0
     assert msg["objects"][0]["label"] == "person"
     assert msg["scene"] == "outdoor"  # 单个 person 不属于 indoor/outdoor 词表，默认室外
     assert msg["danger"] == {"is_danger": True, "labels": ["person"]}
+
+    # H4: 验证 frame 信息
+    assert msg["frame"] == {"width": 64, "height": 48, "center": {"x": 0.5, "y": 0.5}}
+
+    # H4: 验证 target_offset 计算正确
+    # Fake bbox: x=0.3, y=0.2, w=0.2, h=0.6
+    # center_x = 0.3 + 0.2/2 = 0.4
+    # center_y = 0.2 + 0.6/2 = 0.5
+    # dx = 0.4 - 0.5 = -0.1
+    # dy = 0.5 - 0.5 = 0
+    # dx_px = -0.1 * 64 = -6.4 → round 后 -6
+    # dy_px = 0 * 48 = 0
+    assert msg["target_offset"] is not None
+    assert msg["target_offset"]["target_index"] == 0
+    assert msg["target_offset"]["label"] == "person"
+    assert msg["target_offset"]["name"] == "人"
+    assert msg["target_offset"]["confidence"] == 0.91
+    assert msg["target_offset"]["target_center"] == {"x": 0.4, "y": 0.5}
+    assert msg["target_offset"]["dx"] == -0.1
+    assert msg["target_offset"]["dy"] == 0.0
+    assert msg["target_offset"]["dx_px"] == -6
+    assert msg["target_offset"]["dy_px"] == 0
+
     pipeline.stop()
 
 
@@ -94,3 +118,50 @@ def test_pipeline_open_close_camera_lifecycle():
 
     pipeline.stop()
     assert cam.closed is True
+
+
+def test_target_offset_is_null_when_no_objects():
+    """H4: 没有检测到物体时 target_offset 应为 None。"""
+    class EmptyRecognizer:
+        def recognize(self, image: ImageRecognitionInput) -> RecognitionResult:
+            return RecognitionResult(
+                caption="空",
+                tags=[],
+                objects=[],
+                model_used="yolo11n",
+            )
+
+    cam = FakeCamera()
+    rec = EmptyRecognizer()
+    pipeline = LivePipeline(camera=cam, recognizer=rec, infer_every_n_frames=5)
+
+    msg = next(iter(pipeline))
+
+    assert msg["target_offset"] is None
+    assert msg["frame"] == {"width": 64, "height": 48, "center": {"x": 0.5, "y": 0.5}}
+    pipeline.stop()
+
+
+def test_target_offset_is_null_when_only_non_danger_objects():
+    """H4: 只有非危险目标（如椅子、桌子）时，target_offset 也应为 None。"""
+    class ChairOnlyRecognizer:
+        def recognize(self, image: ImageRecognitionInput) -> RecognitionResult:
+            return RecognitionResult(
+                caption="只有椅子",
+                tags=["chair"],
+                objects=[{
+                    "label": "chair", "name": "椅子", "confidence": 0.85,
+                    "x": 0.3, "y": 0.3, "w": 0.2, "h": 0.3,
+                }],
+                model_used="yolo11n",
+            )
+
+    cam = FakeCamera()
+    rec = ChairOnlyRecognizer()
+    pipeline = LivePipeline(camera=cam, recognizer=rec, infer_every_n_frames=5)
+
+    msg = next(iter(pipeline))
+
+    assert msg["target_offset"] is None  # 椅子不是危险目标，不追踪
+    assert msg["objects"][0]["label"] == "chair"  # 确实检测到了椅子
+    pipeline.stop()

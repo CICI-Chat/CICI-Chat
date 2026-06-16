@@ -16,7 +16,7 @@ from typing import Iterator, Protocol
 import cv2
 
 from app.services.annotation import ImageRecognitionInput
-from app.services.danger_detector import detect_danger
+from app.services.danger_detector import DANGER_LABELS, detect_danger
 from app.services.scene_classifier import classify_scene
 
 
@@ -48,6 +48,9 @@ class LivePipeline:
         self._last_objects: list[dict] = []
         self._last_scene: str = "unknown"
         self._last_danger: dict = {"is_danger": False, "labels": []}
+        # H4: 帧信息和目标中心偏移
+        self._last_frame: dict | None = None
+        self._last_target_offset: dict | None = None
 
     def __iter__(self) -> Iterator[dict]:
         self._camera.open()
@@ -66,12 +69,17 @@ class LivePipeline:
                     # 编码失败：跳过这一帧，不阻塞流
                     continue
 
+                # 没有物体时强制 target_offset 为 null（即使是中间帧）
+                current_target_offset = self._last_target_offset if self._last_objects else None
+
                 yield {
                     "ts": time.time(),
                     "jpeg_base64": base64.b64encode(jpeg_bytes.tobytes()).decode("ascii"),
                     "objects": self._last_objects,
                     "scene": self._last_scene,
                     "danger": self._last_danger,
+                    "frame": self._last_frame,
+                    "target_offset": current_target_offset,
                 }
         finally:
             self._camera.close()
@@ -82,6 +90,68 @@ class LivePipeline:
         self._last_objects = list(result.objects)
         self._last_scene = classify_scene(self._last_objects)
         self._last_danger = detect_danger(self._last_objects)
+        # H4: 帧信息
+        self._last_frame = {
+            "width": w,
+            "height": h,
+            "center": {"x": 0.5, "y": 0.5},
+        }
+        # H4: 计算目标中心偏移
+        self._last_target_offset = self._compute_target_offset(w, h)
+
+    def _compute_target_offset(self, frame_width: int, frame_height: int) -> dict | None:
+        """计算主目标相对于画面中心的偏移。
+
+        目标选择策略：
+        1. 优先选置信度最高的危险目标
+        2. 否则选置信度最高的普通目标
+        3. 无目标返回 None
+        """
+        if not self._last_objects:
+            return None
+
+        # 只筛选危险目标（人、车、动物）——无人机避障目标
+        danger_candidates = [
+            (idx, obj)
+            for idx, obj in enumerate(self._last_objects)
+            if obj.get("label") in DANGER_LABELS
+        ]
+
+        # 没有危险目标 → 不追踪（背景物体不算）
+        if not danger_candidates:
+            return None
+
+        # 在危险目标中选置信度最高的
+        target_idx, target = max(
+            danger_candidates,
+            key=lambda pair: pair[1].get("confidence", 0.0),
+        )
+
+        x = target.get("x", 0.0)
+        y = target.get("y", 0.0)
+        bw = target.get("w", 0.0)
+        bh = target.get("h", 0.0)
+
+        center_x = x + bw / 2
+        center_y = y + bh / 2
+
+        dx = center_x - 0.5
+        dy = center_y - 0.5
+
+        return {
+            "target_index": target_idx,
+            "label": target.get("label"),
+            "name": target.get("name"),
+            "confidence": target.get("confidence"),
+            "target_center": {
+                "x": round(center_x, 4),
+                "y": round(center_y, 4),
+            },
+            "dx": round(dx, 4),
+            "dy": round(dy, 4),
+            "dx_px": round(dx * frame_width),
+            "dy_px": round(dy * frame_height),
+        }
 
     def _recognize_ndarray(self, frame, width: int, height: int):
         """为 LivePipeline 设计的 in-memory 推理路径：

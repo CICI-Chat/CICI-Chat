@@ -1,7 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { BboxOverlay } from '../components/BboxOverlay';
+import { CenterOffsetOverlay } from '../components/CenterOffsetOverlay';
 
 type Status = 'idle' | 'connecting' | 'running' | 'error';
+
+interface TargetOffset {
+  target_index: number;
+  label?: string;
+  name?: string;
+  confidence?: number;
+  target_center: { x: number; y: number };
+  dx: number;
+  dy: number;
+  dx_px: number;
+  dy_px: number;
+}
 
 interface FeedMessage {
   ts: number;
@@ -9,6 +22,12 @@ interface FeedMessage {
   objects: Record<string, unknown>[];
   scene: 'indoor' | 'outdoor' | 'unknown';
   danger: { is_danger: boolean; labels: string[] };
+  frame?: {
+    width: number;
+    height: number;
+    center: { x: number; y: number };
+  };
+  target_offset?: TargetOffset | null;
 }
 
 const SCENE_TEXT: Record<FeedMessage['scene'], string> = {
@@ -115,6 +134,14 @@ export default function LivePreview() {
 
       {status === 'running' && msg && (
         <>
+          {/* 🔧 调试：打印完整消息结构 */}
+          <div className="mb-2 rounded bg-purple-900/80 p-2 text-xs text-white">
+            <div>📊 WebSocket 消息调试：</div>
+            <div>objects 数量：{msg.objects?.length}</div>
+            <div>danger：{JSON.stringify(msg.danger)}</div>
+            <div>target_offset：{JSON.stringify(msg.target_offset)}</div>
+          </div>
+
           <div className="relative inline-block w-full">
             <img
               src={`data:image/jpeg;base64,${msg.jpeg_base64}`}
@@ -122,6 +149,7 @@ export default function LivePreview() {
               className="block w-full rounded-xl bg-black object-contain shadow-sm"
             />
             <BboxOverlay objects={msg.objects} />
+            <CenterOffsetOverlay targetOffset={msg.target_offset} />
           </div>
 
           <div className="flex flex-wrap gap-3 text-sm">
