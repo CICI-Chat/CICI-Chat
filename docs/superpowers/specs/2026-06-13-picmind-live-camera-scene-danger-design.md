@@ -65,7 +65,7 @@ WebSocket 协议：客户端连接后，服务器以 ~5 Hz 推送二进制消息
 
 - `jpeg_base64`：原画面（不含红框，红框在前端用 `objects` 自己画，复用 ImageDetail 的逻辑）。
 - `objects`：与静态识别完全一致的 dict 形状（label/name/confidence/x/y/w/h）。
-- `scene`：`"indoor"` / `"outdoor"` / `"unknown"`。
+- `scene`：`"indoor"` / `"outdoor"`（为实时场景优化，不再返回 unknown）。
 - `danger`：`is_danger` 是否触发，`labels` 触发的英文标签数组。
 
 **为什么 base64 而不是二进制 frame？**
@@ -85,11 +85,14 @@ def classify_scene(objects: list[dict]) -> str:
     """
 ```
 
-**规则（投票制）：**
+**规则（优先级制，为实时摄像头优化）：**
 - `INDOOR_LABELS = {"chair", "couch", "tv", "laptop", "bed", "dining table", "toilet", "refrigerator", "microwave", "oven", "sink", "keyboard", "mouse", "book"}`
 - `OUTDOOR_LABELS = {"car", "truck", "bus", "motorcycle", "bicycle", "traffic light", "stop sign", "fire hydrant", "bench", "bird", "boat", "airplane", "train"}`
-- 数 `objects` 里命中 INDOOR 的数量 vs OUTDOOR 的数量
-- INDOOR 多 → `"indoor"`；OUTDOOR 多 → `"outdoor"`；都为 0 或相等 → `"unknown"`
+- 检测到任意 INDOOR 物体 → `"indoor"`（室内优先）
+- 否则检测到任意 OUTDOOR 物体 → `"outdoor"`
+- 都没命中 → 默认 `"outdoor"`（窗外/户外场景最常见）
+
+> 设计变更：从投票制改为优先级制，避免空白墙、天空等场景频繁出现 `unknown`。
 
 ### 3.2 `backend/app/services/danger_detector.py`
 
@@ -153,7 +156,7 @@ class LivePipeline:
 async def live_feed(websocket: WebSocket): ...
 ```
 
-- 接受连接 → 检查 `app.state.live_pipeline_lock` 是否被占用 → 占用就 `close(code=1008)` 拒绝
+- 接受连接 → 检查 `app.state.live_lock` 是否被占用 → 占用就 `close(code=1008)` 拒绝
 - 否则在后台线程跑 `LivePipeline`，`asyncio.to_thread` 抓帧后 `await ws.send_json`
 - 客户端断开 → `pipeline.stop()` + 释放摄像头 + 清锁
 
@@ -188,7 +191,7 @@ WebSocket 连接：`new WebSocket("ws://localhost:8000/api/live/feed")`，
 
 | 测试文件 | 范围 |
 |---|---|
-| `backend/tests/test_scene_classifier.py` | 喂多种 mock objects，断言 indoor/outdoor/unknown |
+| `backend/tests/test_scene_classifier.py` | 喂多种 mock objects，断言 indoor/outdoor（无 unknown，空结果默认 outdoor） |
 | `backend/tests/test_danger_detector.py` | person → True、vase → False、空列表 → False |
 | `backend/tests/test_live_pipeline.py` | 用 fake LiveCamera 喂固定帧、fake recognizer 返回固定 objects，断言 yield 出的 dict 结构正确、节流（每 5 帧推理 1 次）行为正确 |
 | 前端 `npm run build` | TypeScript 编译通过 |

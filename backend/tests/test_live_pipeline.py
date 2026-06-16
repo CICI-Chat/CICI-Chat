@@ -63,7 +63,7 @@ def test_pipeline_yields_messages_with_required_fields():
     assert isinstance(msg["ts"], float)
     assert isinstance(msg["jpeg_base64"], str) and len(msg["jpeg_base64"]) > 0
     assert msg["objects"][0]["label"] == "person"
-    assert msg["scene"] == "unknown"  # 单个 person 不属于 indoor/outdoor 词表
+    assert msg["scene"] == "outdoor"  # 单个 person 不属于 indoor/outdoor 词表，默认室外
     assert msg["danger"] == {"is_danger": True, "labels": ["person"]}
     pipeline.stop()
 
