@@ -15,6 +15,7 @@ from app.config import get_settings
 from app.services.live_camera import CameraUnavailableError, LiveCamera
 from app.services.live_pipeline import LivePipeline
 from app.services.recognition import build_recognizer
+from app.services.yolo_tracker import YoloTracker
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +32,21 @@ async def live_feed(websocket: WebSocket) -> None:
     async with lock:
         await websocket.accept()
         camera = LiveCamera(device_index=0)
-        recognizer = build_recognizer(get_settings())
-        pipeline = LivePipeline(camera=camera, recognizer=recognizer, infer_every_n_frames=5)
+        settings = get_settings()
+        recognizer = build_recognizer(settings)
+        tracker = None
+        if settings.recognition_provider == "yolo":
+            tracker = YoloTracker(
+                model_path=settings.yolo_model_path,
+                confidence_threshold=settings.yolo_confidence_threshold,
+            )
+            tracker._ensure_model()
+        pipeline = LivePipeline(
+            camera=camera,
+            recognizer=recognizer,
+            tracker=tracker,
+            infer_every_n_frames=5,
+        )
 
         iterator = iter(pipeline)
 
