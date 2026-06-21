@@ -9,6 +9,7 @@ interface TargetOffset {
   label?: string;
   name?: string;
   confidence?: number;
+  track_id?: number;
   target_center: { x: number; y: number };
   dx: number;
   dy: number;
@@ -28,6 +29,7 @@ interface FeedMessage {
     center: { x: number; y: number };
   };
   target_offset?: TargetOffset | null;
+  active_track_id?: number | null;
 }
 
 const SCENE_TEXT: Record<FeedMessage['scene'], string> = {
@@ -134,14 +136,6 @@ export default function LivePreview() {
 
       {status === 'running' && msg && (
         <>
-          {/* 🔧 调试：打印完整消息结构 */}
-          <div className="mb-2 rounded bg-purple-900/80 p-2 text-xs text-white">
-            <div>📊 WebSocket 消息调试：</div>
-            <div>objects 数量：{msg.objects?.length}</div>
-            <div>danger：{JSON.stringify(msg.danger)}</div>
-            <div>target_offset：{JSON.stringify(msg.target_offset)}</div>
-          </div>
-
           <div className="relative inline-block w-full">
             <img
               src={`data:image/jpeg;base64,${msg.jpeg_base64}`}

@@ -15,6 +15,7 @@ interface TargetOffset {
   label?: string;
   name?: string;
   confidence?: number;
+  track_id?: number;
   target_center: { x: number; y: number };
   dx: number;
   dy: number;
@@ -27,26 +28,10 @@ interface CenterOffsetOverlayProps {
 }
 
 export function CenterOffsetOverlay({ targetOffset }: CenterOffsetOverlayProps) {
-  // 🔧 调试：先放宽校验，只要有 target_offset 就用它
   const safeOffset = targetOffset;
 
-  // 🔧 调试信息 - 右上角（永远显示，方便调试）
-  const debugInfo = (
-    <div className="absolute right-3 top-3 rounded bg-blue-900/80 px-2 py-1 text-xs text-white z-50">
-      <div>调试：targetOffset = {targetOffset ? '有值' : 'null/undefined'}</div>
-      {targetOffset && (
-        <>
-          <div>label: {targetOffset.label}</div>
-          <div>name: {targetOffset.name}</div>
-          <div>center: {targetOffset.target_center?.x?.toFixed?.(3)}, {targetOffset.target_center?.y?.toFixed?.(3)}</div>
-        </>
-      )}
-    </div>
-  );
-
-  // 没有有效目标时，只显示调试信息
   if (!safeOffset) {
-    return debugInfo;
+    return null;
   }
 
   // 计算偏移距离，用于显示颜色
@@ -60,9 +45,6 @@ export function CenterOffsetOverlay({ targetOffset }: CenterOffsetOverlayProps) 
 
   return (
     <div className="pointer-events-none absolute inset-0">
-      {/* 🔧 调试信息 */}
-      {debugInfo}
-
       {/* 中心十字准星 - 青色 */}
       <div className="absolute left-1/2 top-1/2 h-8 w-px -translate-x-1/2 -translate-y-1/2 bg-cyan-400/90 shadow-[0_0_4px_rgba(34,211,238,0.8)]" />
       <div className="absolute left-1/2 top-1/2 h-px w-8 -translate-x-1/2 -translate-y-1/2 bg-cyan-400/90 shadow-[0_0_4px_rgba(34,211,238,0.8)]" />
@@ -110,7 +92,7 @@ export function CenterOffsetOverlay({ targetOffset }: CenterOffsetOverlayProps) 
       {/* 偏移数值显示 - 左上角 */}
       <div className="absolute left-3 top-3 rounded bg-black/60 px-2 py-1 text-xs text-white">
         <div className="font-medium">
-          目标：{safeOffset.name || safeOffset.label || '未知'}{' '}
+          目标：{safeOffset.track_id ? `#${safeOffset.track_id} ` : ''}{safeOffset.name || safeOffset.label || '未知'}{' '}
           {safeOffset.confidence ? `${Math.round(safeOffset.confidence * 100)}%` : ''}
         </div>
         <div className={getOffsetColor()}>
