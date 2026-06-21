@@ -160,10 +160,9 @@ class LivePipeline:
     def _compute_target_offset(self, frame_width: int, frame_height: int) -> dict | None:
         """计算主目标相对于画面中心的偏移。
 
-        目标选择策略：
-        1. 优先选置信度最高的危险目标
-        2. 否则选置信度最高的普通目标
-        3. 无目标返回 None
+        - 有 tracker：锁定 active_track_id 对应的危险目标
+        - 无 tracker：选置信度最高的危险目标
+        - 无危险目标或 active 不在画面：返回 None
         """
         if not self._last_objects:
             return None

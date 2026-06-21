@@ -199,3 +199,62 @@ def test_pipeline_uses_tracker_and_emits_active_track_id():
     assert msg["objects"][0]["is_active_target"] is True
     assert msg["target_offset"]["track_id"] == 7
     pipeline.stop()
+
+
+def test_active_track_does_not_switch_when_new_target_has_higher_confidence():
+    cam = FakeCamera()
+    rec = FakeRecognizer()
+    tracker = FakeTracker([
+        [{
+            "track_id": 1, "label": "person", "name": "人", "confidence": 0.80,
+            "x": 0.2, "y": 0.2, "w": 0.2, "h": 0.6,
+        }],
+        [
+            {
+                "track_id": 1, "label": "person", "name": "人", "confidence": 0.70,
+                "x": 0.2, "y": 0.2, "w": 0.2, "h": 0.6,
+            },
+            {
+                "track_id": 2, "label": "person", "name": "人", "confidence": 0.99,
+                "x": 0.6, "y": 0.2, "w": 0.2, "h": 0.6,
+            },
+        ],
+    ])
+    pipeline = LivePipeline(camera=cam, recognizer=rec, tracker=tracker, infer_every_n_frames=1)
+
+    msgs = _take(iter(pipeline), 2)
+
+    assert msgs[0]["active_track_id"] == 1
+    assert msgs[1]["active_track_id"] == 1
+    assert msgs[1]["target_offset"]["track_id"] == 1
+    pipeline.stop()
+
+
+def test_active_track_reacquires_after_lost_threshold():
+    cam = FakeCamera()
+    rec = FakeRecognizer()
+    tracker = FakeTracker([
+        [{
+            "track_id": 1, "label": "person", "name": "人", "confidence": 0.90,
+            "x": 0.2, "y": 0.2, "w": 0.2, "h": 0.6,
+        }],
+        [],
+        [],
+        [{
+            "track_id": 2, "label": "person", "name": "人", "confidence": 0.95,
+            "x": 0.6, "y": 0.2, "w": 0.2, "h": 0.6,
+        }],
+    ])
+    pipeline = LivePipeline(camera=cam, recognizer=rec, tracker=tracker, infer_every_n_frames=1)
+    pipeline._max_lost_inferences = 2
+
+    msgs = _take(iter(pipeline), 4)
+
+    assert msgs[0]["active_track_id"] == 1
+    assert msgs[1]["active_track_id"] == 1
+    assert msgs[1]["target_offset"] is None
+    assert msgs[2]["active_track_id"] == 1
+    assert msgs[2]["target_offset"] is None
+    assert msgs[3]["active_track_id"] == 2
+    assert msgs[3]["target_offset"]["track_id"] == 2
+    pipeline.stop()
