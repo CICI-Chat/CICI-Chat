@@ -48,6 +48,19 @@ class FakeRecognizer:
         )
 
 
+class FakeTracker:
+    """每次 track_frame 返回预设 objects，并记录调用次数。"""
+
+    def __init__(self, frames: list[list[dict]]) -> None:
+        self.frames = frames
+        self.call_count = 0
+
+    def track_frame(self, frame) -> list[dict]:
+        idx = min(self.call_count, len(self.frames) - 1)
+        self.call_count += 1
+        return self.frames[idx]
+
+
 def _take(it: Iterator[dict], n: int) -> list[dict]:
     return [next(it) for _ in range(n)]
 
@@ -164,4 +177,25 @@ def test_target_offset_is_null_when_only_non_danger_objects():
 
     assert msg["target_offset"] is None  # 椅子不是危险目标，不追踪
     assert msg["objects"][0]["label"] == "chair"  # 确实检测到了椅子
+    pipeline.stop()
+
+
+def test_pipeline_uses_tracker_and_emits_active_track_id():
+    cam = FakeCamera()
+    rec = FakeRecognizer()
+    tracker = FakeTracker([[
+        {
+            "track_id": 7, "label": "person", "name": "人", "confidence": 0.91,
+            "x": 0.3, "y": 0.2, "w": 0.2, "h": 0.6,
+        }
+    ]])
+    pipeline = LivePipeline(camera=cam, recognizer=rec, tracker=tracker, infer_every_n_frames=5)
+
+    msg = next(iter(pipeline))
+
+    assert tracker.call_count == 1
+    assert rec.call_count == 0
+    assert msg["active_track_id"] == 7
+    assert msg["objects"][0]["is_active_target"] is True
+    assert msg["target_offset"]["track_id"] == 7
     pipeline.stop()

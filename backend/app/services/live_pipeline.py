@@ -30,16 +30,22 @@ class _RecognizerLike(Protocol):
     def recognize(self, image: ImageRecognitionInput): ...
 
 
+class _TrackerLike(Protocol):
+    def track_frame(self, frame) -> list[dict]: ...
+
+
 class LivePipeline:
     def __init__(
         self,
         camera: _CameraLike,
         recognizer: _RecognizerLike,
+        tracker: _TrackerLike | None = None,
         infer_every_n_frames: int = 5,
         jpeg_quality: int = 80,
     ) -> None:
         self._camera = camera
         self._recognizer = recognizer
+        self._tracker = tracker
         self._infer_every = max(1, infer_every_n_frames)
         self._jpeg_quality = jpeg_quality
         self._stopped = False
@@ -51,6 +57,9 @@ class LivePipeline:
         # H4: 帧信息和目标中心偏移
         self._last_frame: dict | None = None
         self._last_target_offset: dict | None = None
+        self._active_track_id: int | None = None
+        self._lost_inference_count = 0
+        self._max_lost_inferences = 10
 
     def __iter__(self) -> Iterator[dict]:
         self._camera.open()
@@ -80,14 +89,18 @@ class LivePipeline:
                     "danger": self._last_danger,
                     "frame": self._last_frame,
                     "target_offset": current_target_offset,
+                    "active_track_id": self._active_track_id,
                 }
         finally:
             self._camera.close()
 
     def _run_inference(self, frame) -> None:
         h, w = frame.shape[:2]
-        result = self._recognize_ndarray(frame, w, h)
-        self._last_objects = list(result.objects)
+        if self._tracker is not None:
+            self._last_objects = list(self._tracker.track_frame(frame))
+        else:
+            result = self._recognize_ndarray(frame, w, h)
+            self._last_objects = list(result.objects)
         self._last_scene = classify_scene(self._last_objects)
         self._last_danger = detect_danger(self._last_objects)
         # H4: 帧信息
@@ -96,8 +109,53 @@ class LivePipeline:
             "height": h,
             "center": {"x": 0.5, "y": 0.5},
         }
+        self._update_active_track()
+        self._mark_active_target()
         # H4: 计算目标中心偏移
         self._last_target_offset = self._compute_target_offset(w, h)
+
+    def _danger_objects_with_track(self) -> list[tuple[int, dict]]:
+        return [
+            (idx, obj)
+            for idx, obj in enumerate(self._last_objects)
+            if obj.get("label") in DANGER_LABELS and obj.get("track_id") is not None
+        ]
+
+    def _update_active_track(self) -> None:
+        if self._tracker is None:
+            self._active_track_id = None
+            self._lost_inference_count = 0
+            return
+
+        candidates = self._danger_objects_with_track()
+        visible_ids = {obj.get("track_id") for _, obj in candidates}
+
+        if self._active_track_id in visible_ids:
+            self._lost_inference_count = 0
+            return
+
+        if self._active_track_id is not None:
+            self._lost_inference_count += 1
+            if self._lost_inference_count <= self._max_lost_inferences:
+                return
+            self._active_track_id = None
+            self._lost_inference_count = 0
+
+        if not candidates:
+            return
+
+        _, target = max(candidates, key=lambda pair: pair[1].get("confidence", 0.0))
+        self._active_track_id = target.get("track_id")
+
+    def _mark_active_target(self) -> None:
+        if self._tracker is None:
+            return
+
+        for obj in self._last_objects:
+            obj["is_active_target"] = (
+                self._active_track_id is not None
+                and obj.get("track_id") == self._active_track_id
+            )
 
     def _compute_target_offset(self, frame_width: int, frame_height: int) -> dict | None:
         """计算主目标相对于画面中心的偏移。
@@ -110,22 +168,40 @@ class LivePipeline:
         if not self._last_objects:
             return None
 
-        # 只筛选危险目标（人、车、动物）——无人机避障目标
-        danger_candidates = [
-            (idx, obj)
-            for idx, obj in enumerate(self._last_objects)
-            if obj.get("label") in DANGER_LABELS
-        ]
+        if self._tracker is None:
+            # 只筛选危险目标（人、车、动物）——无人机避障目标
+            danger_candidates = [
+                (idx, obj)
+                for idx, obj in enumerate(self._last_objects)
+                if obj.get("label") in DANGER_LABELS
+            ]
 
-        # 没有危险目标 → 不追踪（背景物体不算）
-        if not danger_candidates:
-            return None
+            # 没有危险目标 → 不追踪（背景物体不算）
+            if not danger_candidates:
+                return None
 
-        # 在危险目标中选置信度最高的
-        target_idx, target = max(
-            danger_candidates,
-            key=lambda pair: pair[1].get("confidence", 0.0),
-        )
+            # 在危险目标中选置信度最高的
+            target_idx, target = max(
+                danger_candidates,
+                key=lambda pair: pair[1].get("confidence", 0.0),
+            )
+        else:
+            danger_candidates = self._danger_objects_with_track()
+
+            if self._active_track_id is not None:
+                for idx, obj in danger_candidates:
+                    if obj.get("track_id") == self._active_track_id:
+                        target_idx, target = idx, obj
+                        break
+                else:
+                    return None
+            else:
+                if not danger_candidates:
+                    return None
+                target_idx, target = max(
+                    danger_candidates,
+                    key=lambda pair: pair[1].get("confidence", 0.0),
+                )
 
         x = target.get("x", 0.0)
         y = target.get("y", 0.0)
@@ -140,6 +216,7 @@ class LivePipeline:
 
         return {
             "target_index": target_idx,
+            "track_id": target.get("track_id"),
             "label": target.get("label"),
             "name": target.get("name"),
             "confidence": target.get("confidence"),
