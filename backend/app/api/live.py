@@ -35,9 +35,18 @@ async def live_feed(websocket: WebSocket) -> None:
         pipeline = LivePipeline(camera=camera, recognizer=recognizer, infer_every_n_frames=5)
 
         iterator = iter(pipeline)
+        stream_end = object()
 
-        async def _next_msg() -> dict:
-            return await asyncio.to_thread(next, iterator)
+        def _next_or_sentinel() -> object:
+            # StopIteration 无法跨线程/Future 传播（会被转换成 RuntimeError），
+            # 因此在工作线程内部捕获并返回哨兵值来表示迭代结束。
+            try:
+                return next(iterator)
+            except StopIteration:
+                return stream_end
+
+        async def _next_msg() -> object:
+            return await asyncio.to_thread(_next_or_sentinel)
 
         try:
             while True:
@@ -46,7 +55,7 @@ async def live_feed(websocket: WebSocket) -> None:
                 except CameraUnavailableError as exc:
                     await websocket.send_json({"type": "error", "reason": str(exc)})
                     break
-                except StopIteration:
+                if msg is stream_end:
                     break
                 await websocket.send_text(json.dumps(msg))
         except WebSocketDisconnect:
