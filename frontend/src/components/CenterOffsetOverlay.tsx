@@ -15,6 +15,7 @@ interface TargetOffset {
   label?: string;
   name?: string;
   confidence?: number;
+  track_id?: number;
   target_center: { x: number; y: number };
   dx: number;
   dy: number;
@@ -92,7 +93,7 @@ export function CenterOffsetOverlay({ targetOffset }: CenterOffsetOverlayProps) 
       {/* 偏移数值显示 - 左上角 */}
       <div className="absolute left-3 top-3 rounded bg-black/60 px-2 py-1 text-xs text-white">
         <div className="font-medium">
-          目标：{safeOffset.name || safeOffset.label || '未知'}{' '}
+          目标：{typeof safeOffset.track_id === 'number' ? `#${safeOffset.track_id} ` : ''}{safeOffset.name || safeOffset.label || '未知'}{' '}
           {safeOffset.confidence ? `${Math.round(safeOffset.confidence * 100)}%` : ''}
         </div>
         <div className={getOffsetColor()}>

@@ -9,6 +9,7 @@ interface TargetOffset {
   label?: string;
   name?: string;
   confidence?: number;
+  track_id?: number;
   target_center: { x: number; y: number };
   dx: number;
   dy: number;
@@ -28,6 +29,7 @@ interface FeedMessage {
     center: { x: number; y: number };
   };
   target_offset?: TargetOffset | null;
+  active_track_id?: number | null;
 }
 
 const SCENE_TEXT: Record<FeedMessage['scene'], string> = {
