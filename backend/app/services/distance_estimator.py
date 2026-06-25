@@ -6,10 +6,16 @@ h_px = h_norm * frame_height
 D    = (KNOWN_HEIGHTS[label] * FOCAL_LENGTH_PX) / h_px
 """
 
-FOCAL_LENGTH_PX = 700
-"""默认焦距（像素单位），适配 640x480 下的典型笔记本摄像头。
-后续可通过标定工具校准并保存到 data/calibration.json。
-"""
+FOCAL_LENGTH_PX: int | None = None
+"""当前有效焦距。首次引用时从 data/calibration.json 加载。"""
+
+
+def _get_focal_length() -> int:
+    global FOCAL_LENGTH_PX
+    if FOCAL_LENGTH_PX is None:
+        from app.services.calibration import load_focal_length
+        FOCAL_LENGTH_PX = load_focal_length()
+    return FOCAL_LENGTH_PX
 
 KNOWN_HEIGHTS: dict[str, float] = {
     "person": 1.70,
@@ -54,4 +60,4 @@ def estimate_distance(label: str, h_norm: float, frame_height: int) -> float | N
     if h_px <= 0:
         return None
 
-    return (real_height * FOCAL_LENGTH_PX) / h_px
+    return (real_height * _get_focal_length()) / h_px
