@@ -34,7 +34,9 @@ export function BboxOverlay({ objects }: { objects?: BoxObject[] | null }) {
         const pct = typeof conf === 'number' ? `${Math.round(conf * 100)}%` : '';
         const color = colorForTrack(trackId);
         const [borderColor, bgColor] = color.split(' ');
-        const label = typeof trackId === 'number' ? `#${trackId} ${name} ${pct}` : `${name} ${pct}`;
+        const dist = obj.distance_m as number | undefined;
+        const distText = typeof dist === 'number' && dist > 0 ? ` ${dist.toFixed(1)}m` : '';
+        const label = typeof trackId === 'number' ? `#${trackId} ${name} ${pct}${distText}` : `${name} ${pct}${distText}`;
         return (
           <div
             key={typeof trackId === 'number' ? `track-${trackId}` : `box-${idx}`}
