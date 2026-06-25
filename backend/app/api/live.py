@@ -62,6 +62,18 @@ async def live_feed(websocket: WebSocket) -> None:
         async def _next_msg() -> object:
             return await asyncio.to_thread(_next_or_sentinel)
 
+        async def recv_loop():
+            try:
+                while True:
+                    text = await websocket.receive_text()
+                    data = json.loads(text)
+                    if data.get("type") == "calibrate":
+                        pipeline.request_calibrate(data["distance_m"])
+            except WebSocketDisconnect:
+                pass
+
+        recv_task = asyncio.create_task(recv_loop())
+
         try:
             while True:
                 try:
@@ -75,6 +87,7 @@ async def live_feed(websocket: WebSocket) -> None:
         except WebSocketDisconnect:
             logger.info("live feed: client disconnected")
         finally:
+            recv_task.cancel()
             pipeline.stop()
             try:
                 await websocket.close()
