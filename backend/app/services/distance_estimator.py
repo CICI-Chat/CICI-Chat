@@ -6,8 +6,6 @@ h_px = h_norm * frame_height
 D    = (KNOWN_HEIGHTS[label] * FOCAL_LENGTH_PX) / h_px
 """
 
-from app.services.danger_detector import DANGER_LABELS
-
 FOCAL_LENGTH_PX = 700
 """默认焦距（像素单位），适配 640x480 下的典型笔记本摄像头。
 后续可通过标定工具校准并保存到 data/calibration.json。
