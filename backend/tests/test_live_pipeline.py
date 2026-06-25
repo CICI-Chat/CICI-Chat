@@ -258,3 +258,25 @@ def test_active_track_reacquires_after_lost_threshold():
     assert msgs[3]["active_track_id"] == 2
     assert msgs[3]["target_offset"]["track_id"] == 2
     pipeline.stop()
+
+
+def test_pipeline_estimates_distance_for_tracked_objects():
+    """H2: tracker 路径输出带 distance_m 字段。"""
+    cam = FakeCamera()
+    rec = FakeRecognizer()
+    tracker = FakeTracker([[
+        {
+            "track_id": 1, "label": "person", "name": "人", "confidence": 0.91,
+            "x": 0.3, "y": 0.2, "w": 0.2, "h": 0.6,
+        }
+    ]])
+    pipeline = LivePipeline(camera=cam, recognizer=rec, tracker=tracker, infer_every_n_frames=5)
+
+    msg = next(iter(pipeline))
+
+    assert len(msg["objects"]) == 1
+    obj = msg["objects"][0]
+    assert "distance_m" in obj
+    assert isinstance(obj["distance_m"], float)
+    assert obj["distance_m"] > 0
+    pipeline.stop()

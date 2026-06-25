@@ -17,6 +17,7 @@ import cv2
 
 from app.services.annotation import ImageRecognitionInput
 from app.services.danger_detector import DANGER_LABELS, detect_danger
+from app.services.distance_estimator import estimate_distance
 from app.services.scene_classifier import classify_scene
 
 
@@ -113,6 +114,7 @@ class LivePipeline:
         self._mark_active_target()
         # H4: 计算目标中心偏移
         self._last_target_offset = self._compute_target_offset(w, h)
+        self._add_distances(h)
 
     def _danger_objects_with_track(self) -> list[tuple[int, dict]]:
         return [
@@ -156,6 +158,17 @@ class LivePipeline:
                 self._active_track_id is not None
                 and obj.get("track_id") == self._active_track_id
             )
+
+    def _add_distances(self, frame_height: int) -> None:
+        """为每个危险目标估算距离，写入 distance_m 字段。"""
+        for obj in self._last_objects:
+            label = obj.get("label", "")
+            if label not in DANGER_LABELS:
+                continue
+            h_norm = obj.get("h", 0.0)
+            d = estimate_distance(label, h_norm, frame_height)
+            if d is not None:
+                obj["distance_m"] = round(d, 1)
 
     def _compute_target_offset(self, frame_width: int, frame_height: int) -> dict | None:
         """计算主目标相对于画面中心的偏移。
