@@ -196,7 +196,7 @@ class LivePipeline:
                 kf.update(d)
                 state = kf.get_state()
                 obj["distance_m"] = state["distance"]
-                obj["velocity_ms"] = round(state["velocity"] / 0.2, 1)  # 转 m/s
+                obj["velocity_ms"] = round(state["velocity"], 1)
             else:
                 if d is not None:
                     obj["distance_m"] = round(d, 1)
@@ -212,7 +212,7 @@ class LivePipeline:
 
         active_obj = None
         for obj in self._last_objects:
-            if obj.get("is_active_target") and obj.get("track_id") is not None:
+            if obj.get("track_id") is not None and obj.get("label") in DANGER_LABELS:
                 active_obj = obj
                 break
         if active_obj is None:
