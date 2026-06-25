@@ -42,6 +42,8 @@ export default function LivePreview() {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<FeedMessage | null>(null);
+  const [calState, setCalState] = useState<{ status: 'idle' | 'done' | 'error'; focal?: number; msg?: string }>({ status: 'idle' });
+  const calDistanceRef = useRef<HTMLInputElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -60,7 +62,15 @@ export default function LivePreview() {
     ws.onopen = () => setStatus('running');
     ws.onmessage = (event) => {
       try {
-        const data: FeedMessage = JSON.parse(event.data);
+        const data = JSON.parse(event.data);
+        if (data.type === 'calibrated') {
+          setCalState({ status: 'done', focal: data.focal_length_px });
+          return;
+        }
+        if (data.type === 'error') {
+          setCalState({ status: 'error', msg: data.reason });
+          return;
+        }
         setMsg(data);
       } catch {
         // 忽略坏帧
@@ -160,6 +170,37 @@ export default function LivePreview() {
               <div className="rounded-full bg-green-100 px-4 py-2 text-green-700">
                 ✅ 当前画面无危险目标
               </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 border-t pt-3 text-sm">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-slate-500">标定距离：</label>
+              <input
+                ref={calDistanceRef}
+                type="number"
+                defaultValue={2.0}
+                min={0.5}
+                max={10}
+                step={0.1}
+                className="w-20 rounded border px-2 py-1 text-xs"
+              />
+            </div>
+            <button
+              onClick={() => {
+                const d = parseFloat(calDistanceRef.current?.value || '2.0');
+                wsRef.current?.send(JSON.stringify({type: 'calibrate', distance_m: d}));
+                setCalState({ status: 'idle' });
+              }}
+              className="rounded bg-cyan-600 px-3 py-1 text-xs text-white hover:bg-cyan-700"
+            >
+              标定焦距
+            </button>
+            {calState.status === 'done' && (
+              <span className="text-xs text-green-600">✅ 焦距已校准：{calState.focal}px</span>
+            )}
+            {calState.status === 'error' && (
+              <span className="text-xs text-red-600">❌ {calState.msg}</span>
             )}
           </div>
 
