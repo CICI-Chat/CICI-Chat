@@ -16,6 +16,7 @@ from app.services.live_camera import CameraUnavailableError, LiveCamera
 from app.services.live_pipeline import LivePipeline
 from app.services.recognition import build_recognizer
 from app.services.yolo_tracker import YoloTracker
+from app.services.flight_controller import BetaflightBridge
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,17 @@ async def live_feed(websocket: WebSocket) -> None:
             tracker=tracker,
             infer_every_n_frames=5,
         )
+
+        # 飞控桥接（自动连接）
+        bridge = None
+        try:
+            bridge = BetaflightBridge(port="COM3", baud=115200)
+            bridge.connect()
+            pipeline.set_flight_bridge(bridge)
+            logger.info("飞控桥接已就绪：COM3 @ 115200")
+        except Exception as exc:
+            logger.warning("飞控桥接未连接（正常，调试模式可忽略）: %s", exc)
+            bridge = None
 
         iterator = iter(pipeline)
         stream_end = object()
@@ -89,6 +101,11 @@ async def live_feed(websocket: WebSocket) -> None:
         finally:
             recv_task.cancel()
             pipeline.stop()
+            if bridge is not None:
+                try:
+                    bridge.disconnect()
+                except Exception:
+                    pass
             try:
                 await websocket.close()
             except RuntimeError:

@@ -20,6 +20,7 @@ from app.services.danger_detector import DANGER_LABELS, detect_danger
 from app.services.distance_estimator import estimate_distance
 from app.services.kalman_filter import KalmanFilter1D
 from app.services.calibration import compute_focal_length, save_focal_length
+from app.services.flight_controller import BetaflightBridge
 from app.services.scene_classifier import classify_scene
 
 
@@ -66,6 +67,7 @@ class LivePipeline:
 
         self._kf_registry: dict[int, KalmanFilter1D] = {}
         self._calibrate_request: dict | None = None
+        self._flight_bridge: BetaflightBridge | None = None
 
     def __iter__(self) -> Iterator[dict]:
         self._camera.open()
@@ -126,6 +128,18 @@ class LivePipeline:
         # H4: 计算目标中心偏移
         self._last_target_offset = self._compute_target_offset(w, h)
         self._add_distances_and_velocity(h)
+        # 飞控：发送视觉控制指令
+        if self._flight_bridge is not None and self._last_target_offset is not None:
+            try:
+                active_dist = self._last_target_offset.get("distance_m", 10)
+                self._flight_bridge.send_vision(
+                    dx=self._last_target_offset.get("dx", 0.0),
+                    dy=self._last_target_offset.get("dy", 0.0),
+                    distance_m=active_dist,
+                    danger=self._last_danger.get("is_danger", False),
+                )
+            except Exception:
+                pass  # 飞控异常不阻塞推理
 
     def _danger_objects_with_track(self) -> list[tuple[int, dict]]:
         return [
@@ -200,6 +214,10 @@ class LivePipeline:
             else:
                 if d is not None:
                     obj["distance_m"] = round(d, 1)
+
+    def set_flight_bridge(self, bridge: BetaflightBridge) -> None:
+        """绑定飞控桥接，每次推理后自动发送控制指令。"""
+        self._flight_bridge = bridge
 
     def request_calibrate(self, distance_m: float) -> None:
         self._calibrate_request = {"distance_m": distance_m}
