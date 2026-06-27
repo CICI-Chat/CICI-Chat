@@ -1,7 +1,8 @@
 # PicMind 项目交接手册
 
-## 🔍 项目概述
-PicMind：从图片管理工具演进而来的无人机实时视觉感知系统。目标是在 PC 上开发验证，零改动迁移到无人机机载电脑。
+> **版本同步说明：** 如果在另一台电脑上继续开发，先 `git pull` 拉取最新代码，**然后启动一个新的 Claude Code 会话**（关闭当前 VS Code 终端再开一个新的）。Claude 会在新会话启动时自动读取本文件，确保两台电脑理解一致。
+
+---
 
 ## ✅ 已完成功能总览
 
@@ -37,7 +38,7 @@ http://localhost:5173 → 导航「实时预览」
 ```
 
 ## ⚙️ 配置
-- 后端 `.env`：`RECOGNITION_PROVIDER=yolo`，`YOLO_MODEL_PATH=...`
+- 后端 `.env`：`RECOGNITION_PROVIDER=yolo`，`YOLO_MODEL_PATH=D:/my vibe coding/models/yolo/yolo11n.pt`
 - 飞控串口：`COM3 @ 115200`（Betaflight）
 
 ## 🏗️ 架构要点
@@ -75,11 +76,11 @@ live.py (WebSocket)
 camera = LiveCamera(device_index="http://192.168.x.x:81/stream")
 ```
 
-## 📋 后续可做
+## 📋 后续方向（备选清单，选一个做）
 - 飞控实际硬件联调（Betaflight 已配好 COM3）
 - GPU 加速（见 docs/CODEMAPS/yolo-gpu-migration.md）
-- 多目标手动选择锁定
-- Gitee/GitHub 双远程同步
+- 多目标手动选择锁定（前端点击选择某个 target 追踪）
+- ESP32-CAM WiFi 图传接入
 
 ## 📚 更多文档
 - `docs/superpowers/specs/` - 设计规格
