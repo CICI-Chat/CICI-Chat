@@ -23,6 +23,9 @@
 | 一键焦距标定 | ✅ | 前端按钮+距离输入→WebSocket→保存 calibration.json |
 | 速度显示 | ✅ | bbox 标签 ↑1.2m/s ↓0.5m/s |
 | 飞控桥接 | ✅ | BetaflightBridge(COM3) MSP 协议，自动连接/断开 |
+| ESP32-CAM WiFi 图传 | ✅ | GOOUUU ESP32-S3-N16R8 V1.5，摄像头无线传画面给 PicMind |
+| 肩宽测距 | ✅ | person 用肩宽(0.45m)而非身高，解决近距离全身超画面导致不准 |
+| 摄像头断线自动重连 | ✅ | LiveCamera read() 失败自动重连网络流 |
 
 ## 🚀 启动方式
 
@@ -39,7 +42,26 @@ http://localhost:5173 → 导航「实时预览」
 
 ## ⚙️ 配置
 - 后端 `.env`：`RECOGNITION_PROVIDER=yolo`，`YOLO_MODEL_PATH=D:/my vibe coding/models/yolo/yolo11n.pt`
+- 摄像头来源 `.env`：`CAMERA_SOURCE`（USB 填 `0`；ESP32 填 `http://<IP>/stream`）
 - 飞控串口：`COM3 @ 115200`（Betaflight）
+
+## 📡 ESP32-S3-CAM（无线图传）
+- 板子型号：**GOOUUU ESP32-S3-N16R8 V1.5**
+- 固件源码：`esp32/test_camera/test_camera.ino`（纯摄像头视频流，已验证可用）
+- 编译参数（重要）：`esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=huge_app`
+  - **必须开 PSRAM=opi**，否则摄像头初始化报 Camera FAIL
+- 摄像头引脚：GOOUUU 标准（XCLK=15, PCLK=13, SIOD=4, SIOC=5, VSYNC=6, HREF=7, Y2-Y9=11/9/8/10/12/18/17/16）
+- WiFi：只支持 2.4G。当前用随身 WiFi「CICI」，ESP32 自动获取 IP
+  - **IP 会变**，代码用自动获取 + 串口打印；找不到时用 `curl` 扫网段：`for ip in $(seq 2 254); do curl -s -m1 http://192.168.x.$ip/ | grep -qi stream && echo $ip; done`
+- 换 WiFi 步骤：改 `test_camera.ino` 里的 ssid/pass → 编译烧录 → 扫描找新 IP → 改后端 `.env` 的 CAMERA_SOURCE
+- 烧录：进下载模式（按住 BOOT → 按 RESET → 松 RESET → 保持按住 BOOT），用 arduino-cli upload
+- ⚠️ 焊传感器避开这些引脚：GPIO4/5/6/7/9/10/11/12/13/15/16/17/18（摄像头占用）、GPIO0/3/19/20/45/46（启动/USB）
+
+## 🔌 TOF + 光流（断网悬停，焊接中）
+- TOF：VL53L5X（I2C），光流：PMW3901（SPI），都焊在 ESP32-S3-CAM 上
+- 安全引脚方案：光流 SCK=36/MOSI=35/MISO=37/CS=38，TOF SDA/SCL 用空闲脚，全部 3V3 供电
+- 拉高脚（接 3V3）：光流 VRE/RST，TOF LPN
+- 用途：ESP32 读传感器→MSP 发飞控→断网也能定高悬停
 
 ## 🏗️ 架构要点
 
