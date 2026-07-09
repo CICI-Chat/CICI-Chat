@@ -18,6 +18,13 @@ class Settings(BaseSettings):
         alias="YOLO_MODEL_PATH",
     )
     yolo_confidence_threshold: float = Field(default=0.25, alias="YOLO_CONFIDENCE_THRESHOLD")
+    camera_source: str = Field(default="0", alias="CAMERA_SOURCE")
+
+    @property
+    def camera_device(self) -> int | str:
+        """摄像头来源：纯数字返回 int（USB），否则返回字符串（网络流 URL）。"""
+        s = self.camera_source.strip()
+        return int(s) if s.isdigit() else s
 
     @property
     def watch_folder_paths(self) -> list[Path]:

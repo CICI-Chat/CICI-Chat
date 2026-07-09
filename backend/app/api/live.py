@@ -32,8 +32,8 @@ async def live_feed(websocket: WebSocket) -> None:
 
     async with lock:
         await websocket.accept()
-        camera = LiveCamera(device_index=0)
         settings = get_settings()
+        camera = LiveCamera(device_index=settings.camera_device)
         recognizer = build_recognizer(settings)
         tracker = None
         if settings.recognition_provider == "yolo":

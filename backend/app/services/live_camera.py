@@ -12,7 +12,7 @@ class CameraUnavailableError(RuntimeError):
 
 
 class LiveCamera:
-    def __init__(self, device_index: int = 0) -> None:
+    def __init__(self, device_index: int | str = 0) -> None:
         self.device_index = device_index
         self._cap: Optional[cv2.VideoCapture] = None
         self._lock = Lock()
