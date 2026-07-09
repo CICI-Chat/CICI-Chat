@@ -127,7 +127,7 @@ class LivePipeline:
         self._mark_active_target()
         # H4: 计算目标中心偏移
         self._last_target_offset = self._compute_target_offset(w, h)
-        self._add_distances_and_velocity(h)
+        self._add_distances_and_velocity(h, w)
         # 飞控：发送视觉控制指令
         if self._flight_bridge is not None and self._last_target_offset is not None:
             try:
@@ -184,7 +184,7 @@ class LivePipeline:
                 and obj.get("track_id") == self._active_track_id
             )
 
-    def _add_distances_and_velocity(self, frame_height: int) -> None:
+    def _add_distances_and_velocity(self, frame_height: int, frame_width: int) -> None:
         """为每个危险目标估算距离、卡尔曼平滑、输出速度。"""
         # 清理已消失目标的卡尔曼
         visible_track_ids = {
@@ -201,7 +201,11 @@ class LivePipeline:
             if label not in DANGER_LABELS:
                 continue
             h_norm = obj.get("h", 0.0)
-            d = estimate_distance(label, h_norm, frame_height)
+            w_norm = obj.get("w", 0.0)
+            d = estimate_distance(
+                label, h_norm, frame_height,
+                w_norm=w_norm, frame_width=frame_width,
+            )
             track_id = obj.get("track_id")
             if track_id is not None:
                 if track_id not in self._kf_registry:
@@ -221,6 +225,7 @@ class LivePipeline:
 
     def request_calibrate(self, distance_m: float) -> None:
         self._calibrate_request = {"distance_m": distance_m}
+        print(f"[标定] 收到请求 distance_m={distance_m}", flush=True)
 
     def _handle_calibrate_request(self) -> dict | None:
         req = self._calibrate_request
@@ -234,21 +239,24 @@ class LivePipeline:
                 active_obj = obj
                 break
         if active_obj is None:
+            print("[标定] 失败：画面里没有带 track_id 的危险目标", flush=True)
             return {"type": "error", "reason": "画面中没有检测到目标，请站在摄像头前再试"}
 
         label = active_obj.get("label", "person")
-        known_heights = {"person": 1.70}
-        known_height = known_heights.get(label, 1.7)
-        h_norm = active_obj.get("h", 0.0)
-        frame_height = (self._last_frame or {}).get("height", 480)
+        # 用肩宽标定（和 estimate_distance 的宽度测距一致）
+        known_widths = {"person": 0.45}
+        known_width = known_widths.get(label, 0.45)
+        w_norm = active_obj.get("w", 0.0)
+        frame_width = (self._last_frame or {}).get("width", 320)
 
         try:
             f_px = compute_focal_length(
                 distance_m=req["distance_m"],
-                h_norm=h_norm,
-                frame_height=frame_height,
-                known_height_m=known_height,
+                h_norm=w_norm,          # 复用公式，传入宽度
+                frame_height=frame_width,
+                known_height_m=known_width,
             )
+            print(f"[标定] distance={req['distance_m']} w_norm={w_norm} frame_w={frame_width} known_w={known_width} => f_px={f_px}", flush=True)
             save_focal_length(f_px)
             import app.services.distance_estimator as de
             de.FOCAL_LENGTH_PX = None

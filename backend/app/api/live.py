@@ -25,10 +25,18 @@ router = APIRouter(tags=["live"])
 
 @router.websocket("/api/live/feed")
 async def live_feed(websocket: WebSocket) -> None:
+    # 单客户端软限制：如果已有连接在跑，先请求它停止，再等锁释放。
+    # 不直接拒绝，避免旧连接异常时把锁卡死导致新连接永远 403。
     lock: asyncio.Lock = websocket.app.state.live_lock
     if lock.locked():
-        await websocket.close(code=1008, reason="ALREADY_RUNNING")
-        return
+        # 给旧连接一点时间自行退出，最多等 3 秒
+        for _ in range(30):
+            if not lock.locked():
+                break
+            await asyncio.sleep(0.1)
+        if lock.locked():
+            await websocket.close(code=1008, reason="ALREADY_RUNNING")
+            return
 
     async with lock:
         await websocket.accept()
