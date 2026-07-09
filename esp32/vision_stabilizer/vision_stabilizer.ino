@@ -40,13 +40,19 @@
 #include <SPI.h>
 
 // ======================== 用户配置 ========================
-const char* ssid     = "你的WiFi名";
-const char* password = "你的WiFi密码";
+const char* ssid     = "HX2.4G";
+const char* password = "hx131659";
+
+// 固定 IP（连你家路由器，每次打开同一个地址就行）
+#define USE_FIXED_IP true
+#define FIXED_IP     192,168,1,222
+#define GATEWAY      192,168,1,1
+#define SUBNET       255,255,255,0
 
 #define MSP_SET_RAW_RC 200
 
 // ======================== 引脚定义 ========================
-// 摄像头：ESP32S3-EYE 标准
+// 摄像头：ESP32-S3-CAM (通用 GOOUUU)
 #define PWDN_GPIO_NUM     -1
 #define RESET_GPIO_NUM    -1
 #define XCLK_GPIO_NUM     15
@@ -54,11 +60,11 @@ const char* password = "你的WiFi密码";
 #define SIOC_GPIO_NUM     5
 #define Y9_GPIO_NUM       16
 #define Y8_GPIO_NUM       17
-#define Y7_GPIO_NUM       3
+#define Y7_GPIO_NUM       18
 #define Y6_GPIO_NUM       12
-#define Y5_GPIO_NUM       18
+#define Y5_GPIO_NUM       10
 #define Y4_GPIO_NUM       8
-#define Y3_GPIO_NUM       10
+#define Y3_GPIO_NUM       9
 #define Y2_GPIO_NUM       11
 #define VSYNC_GPIO_NUM    6
 #define HREF_GPIO_NUM     7
@@ -114,8 +120,24 @@ bool init_camera() {
 WiFiServer cam_server(81);
 
 void init_wifi() {
+  // 先试 STA 模式连你家路由器
+  WiFi.mode(WIFI_STA);
+  WiFi.config(IPAddress(FIXED_IP), IPAddress(GATEWAY), IPAddress(SUBNET));
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) delay(500);
+  int retry = 0;
+  while (WiFi.status() != WL_CONNECTED && retry < 40) {
+    delay(500);
+    retry++;
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    cam_server.begin();
+    return;
+  }
+
+  // 连不上就切 AP 模式自己发射 WiFi
+  WiFi.mode(WIFI_AP);
+  WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
+  WiFi.softAP("ESP32-CAM", "88888888");
   cam_server.begin();
 }
 
