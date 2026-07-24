@@ -4,6 +4,29 @@
 
 ---
 
+## 📍 当前进度断点（最重要，先看这里）
+
+**上次工作到：稳定器固件已改好待烧录**
+
+- ✅ `esp32/vision_stabilizer/vision_stabilizer.ino` 已按实际接线改好并编译通过（未烧录到板子）
+  - 光流 PMW3901：CLK=36, MOSI=35, MISO=37, CS=38
+  - TOF VL53L5X：SDA=42, SCL=14
+  - WiFi：CICI / Hx331621，自动获取 IP，80 端口
+  - 摄像头引脚：GOOUUU 标准（已验证能出画面）
+- ⏳ **下一步：烧录这个固件到 ESP32**（当前板子里烧的是 test_camera，只有摄像头没有传感器）
+  - 编译命令：`arduino-cli compile --fqbn "esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=huge_app" esp32/vision_stabilizer/vision_stabilizer.ino`
+  - 烧录：进下载模式（按住BOOT→按RESET→松RESET→保持按住BOOT）→ `arduino-cli upload --fqbn ... --port COMx`
+  - arduino-cli 路径：`C:/Users/18198/AppData/Local/Programs/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe`
+- 烧完验证：读串口看 TOF 高度/光流位移；浏览器开 ESP32 的 IP 看画面；PicMind 实时预览正常
+- TOF+光流硬件**已焊好**（引脚同上）
+
+**待办优先级（从易到难）：** 烧录稳定器固件 → 验证传感器数据 → 供电方案(7.4V→降压→5V) → ESP32接飞控 → 真机试飞
+
+**注意：** GitHub 在随身 WiFi 下常连不上，用 `git push gitee master` 备份；换普通网络补推 github。
+
+---
+
+
 ## ✅ 已完成功能总览
 
 | 功能 | 状态 | 说明 |
