@@ -5,8 +5,8 @@
 #include "esp_camera.h"
 #include <WiFi.h>
 
-const char* ssid = "HX2.4G";
-const char* pass = "hx131659";
+const char* ssid = "CICI";
+const char* pass = "Hx331621";
 
 // ESP32-S3-CAM (GOOUUU) 引脚
 #define PWDN_GPIO_NUM  -1
@@ -70,9 +70,10 @@ void setup() {
   cam_err = err;
 
   WiFi.mode(WIFI_STA);
-  WiFi.config(IPAddress(192,168,1,222), IPAddress(192,168,1,1), IPAddress(255,255,255,0));
   WiFi.begin(ssid, pass);
   for (int i = 0; i < 30 && WiFi.status() != WL_CONNECTED; i++) delay(500);
+  Serial.print("IP 地址: http://");
+  Serial.println(WiFi.localIP());
   server.begin();
 }
 

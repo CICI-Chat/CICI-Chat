@@ -40,8 +40,8 @@
 #include <SPI.h>
 
 // ======================== 用户配置 ========================
-const char* ssid     = "HX2.4G";
-const char* password = "hx131659";
+const char* ssid     = "CICI";
+const char* password = "Hx331621";
 
 // 固定 IP（连你家路由器，每次打开同一个地址就行）
 #define USE_FIXED_IP true
@@ -70,14 +70,14 @@ const char* password = "hx131659";
 #define HREF_GPIO_NUM     7
 #define PCLK_GPIO_NUM     13
 
-// TOF：I2C
-#define PIN_SDA    21
-#define PIN_SCL    22
+// TOF：I2C（实际焊接：SDA=42, SCL=14）
+#define PIN_SDA    42
+#define PIN_SCL    14
 
-// 光流：SPI（用不冲突的引脚）
+// 光流：SPI（实际焊接：CLK=36, MOSI=35, MISO=37, CS=38）
 #define PIN_CLK    36
-#define PIN_MOSI   37
-#define PIN_MISO   35
+#define PIN_MOSI   35
+#define PIN_MISO   37
 #define PIN_CS     38
 
 // ======================== 全局 ========================
@@ -117,33 +117,40 @@ bool init_camera() {
 }
 
 // ======================== WiFi 图传 ========================
-WiFiServer cam_server(81);
+WiFiServer cam_server(80);
 
 void init_wifi() {
-  // 先试 STA 模式连你家路由器
   WiFi.mode(WIFI_STA);
-  WiFi.config(IPAddress(FIXED_IP), IPAddress(GATEWAY), IPAddress(SUBNET));
   WiFi.begin(ssid, password);
   int retry = 0;
   while (WiFi.status() != WL_CONNECTED && retry < 40) {
     delay(500);
     retry++;
   }
-  if (WiFi.status() == WL_CONNECTED) {
-    cam_server.begin();
-    return;
-  }
-
-  // 连不上就切 AP 模式自己发射 WiFi
-  WiFi.mode(WIFI_AP);
-  WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
-  WiFi.softAP("ESP32-CAM", "88888888");
+  Serial.print("IP 地址: http://");
+  Serial.println(WiFi.localIP());
   cam_server.begin();
 }
 
 void stream_camera() {
   WiFiClient c = cam_server.available();
   if (!c) return;
+
+  // 读请求首行判断路径
+  String req = c.readStringUntil('\n');
+  while (c.available()) c.read();
+
+  // 非 /stream 返回带 <img> 的网页，方便浏览器直接看
+  if (req.indexOf("/stream") < 0) {
+    c.println("HTTP/1.1 200 OK");
+    c.println("Content-Type: text/html; charset=utf-8\n");
+    c.println("<html><body style='margin:0;background:#000;text-align:center'>");
+    c.println("<img src='/stream' style='width:100%;max-width:640px'>");
+    c.println("</body></html>");
+    c.stop();
+    return;
+  }
+
   c.println("HTTP/1.1 200 OK");
   c.println("Content-Type: multipart/x-mixed-replace; boundary=frame\n");
   while (c.connected()) {
